@@ -1,0 +1,24 @@
+POLICY DOCUMENT: Mobile Banking Application
+Document ID: POL-MB-001
+Last Updated: 2025-01-01
+
+--- MOBILE CHECK DEPOSIT ---
+Customers may deposit checks using the mobile app by photographing both sides of the check. Deposits submitted before 8:00 PM Eastern Time on a business day are processed the same day. Funds from mobile check deposits are typically available within 1 to 2 business days, depending on the account history and deposit amount. If a deposit fails due to a technical issue on the app's side, no hold period is extended to the customer.
+
+--- BIOMETRIC AND DEVICE AUTHENTICATION ---
+The mobile app supports Face ID, fingerprint authentication, and PIN login. Biometric authentication is re-enrolled automatically if it stops working after an app update. If biometric login fails after an update, customers should re-enroll through the app's security settings. If the issue persists, contacting support will allow the bank to reset authentication credentials remotely.
+
+--- TRANSACTION NOTIFICATIONS ---
+Push notifications for debit and credit transactions are sent within 60 seconds of the transaction posting. Customers who experience delays in fraud alert notifications should verify that notification permissions are enabled in their device settings. If notifications are enabled and delays exceed 15 minutes consistently, the issue should be reported to the technical support team.
+
+--- TRANSFERS AND PAYMENT ERRORS ---
+If the app logs a customer out mid-transfer, the transfer should be checked in the transaction history before resubmitting to avoid a duplicate payment. Duplicate payments caused by app errors are eligible for immediate reversal. Customers should contact support within 24 hours of a suspected duplicate transaction.
+
+--- APP UPDATES AND FEATURE CHANGES ---
+Major app updates are announced in the app store release notes at least 7 days before deployment. Features removed or significantly changed must be communicated through an in-app notification. Customers who prefer a previous version of the app may contact support to provide feedback; rollbacks are not available for individual users.
+
+--- DATA EXPORT ---
+Transaction history can be exported to CSV or PDF format through the account statements section of the app. Exports cover up to 24 months of transaction history. For longer date ranges, customers may request a full account history through the customer service portal.
+
+--- FRAUD AND UNAUTHORIZED ACCESS ---
+If a customer believes their mobile app account has been accessed without authorization, they should immediately lock the account through the app's security settings or by contacting support. The bank will freeze the account within 15 minutes of a fraud report. All transactions occurring after the reported unauthorized access are eligible for dispute.

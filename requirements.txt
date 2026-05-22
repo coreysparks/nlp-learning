@@ -1,0 +1,29 @@
+# --- Core data ---
+numpy
+pandas
+matplotlib
+
+# --- Traditional NLP ---
+nltk
+spacy
+scikit-learn
+textblob
+
+# --- Embeddings & clustering ---
+sentence-transformers
+umap-learn
+hdbscan
+seaborn
+plotly
+chromadb
+
+# --- Generative AI ---
+anthropic
+
+# --- Notebooks ---
+jupyter
+ipykernel
+
+# --- Utilities ---
+python-dotenv
+tqdm

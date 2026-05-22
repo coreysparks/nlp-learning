@@ -1,0 +1,24 @@
+POLICY DOCUMENT: Investment Account Services
+Document ID: POL-INV-001
+Last Updated: 2025-01-01
+
+--- TRADE EXECUTION ---
+All market orders are executed at the best available price at the time the order reaches the exchange. The execution price may differ from the price quoted at the time the order was placed due to normal market fluctuations. Customers who believe a trade was executed at a price that does not reflect normal market conditions may request a trade audit within 30 days. The audit process takes up to 15 business days. If a pricing error on the bank's platform is confirmed, the customer is entitled to a price adjustment.
+
+--- COST BASIS AND TAX REPORTING ---
+The bank is responsible for accurately tracking the cost basis of all securities held in taxable accounts. Cost basis information is reported on Form 1099-B at year end. If a customer identifies an error in their cost basis, they must notify the bank in writing. Corrections must be processed within 10 business days of the written request and confirmed to the customer. Customers should retain their own trade confirmations as a secondary record.
+
+--- IRA CONTRIBUTIONS AND DISTRIBUTIONS ---
+Contributions to Individual Retirement Accounts (IRAs) must be made by the tax filing deadline for the applicable tax year (typically April 15). Distribution requests from IRAs are processed within 3 business days. Customers must complete IRS Form W-4R to elect withholding on distributions. Required Minimum Distributions (RMDs) are calculated annually and a reminder is sent to eligible customers each January.
+
+--- ACCOUNT TRANSFERS (ACAT) ---
+Customers who wish to transfer their brokerage account to another institution may initiate an Automated Customer Account Transfer (ACAT). The transfer process takes 5 to 7 business days for standard assets. Non-standard assets (options, restricted securities, annuities) may take longer or require liquidation prior to transfer. There is no fee for outgoing ACAT transfers.
+
+--- FEES ---
+Account maintenance fees, trading commissions, and expense ratios are disclosed in the account fee schedule provided at account opening. Fee schedules may be updated with 30 days written notice. Customers who believe they were charged fees not disclosed in their agreement may file a dispute within 90 days.
+
+--- DIVIDEND POSTING ---
+Cash dividends are posted to the account on the payment date established by the issuing company. Dividend reinvestment (DRIP) purchases are processed the same day as the payment date. If a dividend fails to post within 2 business days of the payment date, customers should contact support with the security name and declared payment date.
+
+--- BENEFICIARY DESIGNATIONS ---
+Customers may designate beneficiaries for their investment and retirement accounts through the online portal. Beneficiary designations override instructions in a will or trust. Updates take effect within 2 business days. Customers should review beneficiary designations annually and after major life events.

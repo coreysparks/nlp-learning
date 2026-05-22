@@ -1,0 +1,21 @@
+POLICY DOCUMENT: Credit Card Services
+Document ID: POL-CC-001
+Last Updated: 2025-01-01
+
+--- LATE FEES AND PAYMENT POSTING ---
+A payment is considered on time if it is received and posted by 5:00 PM Eastern Time on the due date. Payments submitted through online banking or the mobile app before this cutoff are posted the same business day. Payments received after the cutoff or on weekends and federal holidays are posted the next business day. If a late fee is charged and the customer can demonstrate the payment was submitted before the cutoff, the fee must be waived upon first request. Customers are entitled to one courtesy late fee waiver per 12-month period without demonstration of timely payment.
+
+--- CREDIT LIMIT CHANGES ---
+The bank reserves the right to increase or decrease credit limits based on periodic account reviews, changes in creditworthiness, or risk management requirements. Credit limit decreases must be communicated to the customer in writing at least 45 days before taking effect, except in cases of suspected fraud or default risk, where immediate action may be taken. Customers who believe a limit decrease was applied in error may request a review within 60 days. The review process takes up to 10 business days.
+
+--- UNAUTHORIZED CHARGES AND FRAUD ---
+Customers who identify unauthorized charges on their statement must report them within 60 days of the statement date. Upon receiving a dispute, the bank has 5 business days to acknowledge the claim and 45 days to resolve it. During the investigation period, the disputed amount is placed in a provisional credit status and is not included in the minimum payment calculation. Customers are not liable for unauthorized charges resulting from card theft or fraud provided they report it promptly.
+
+--- REWARDS AND CASHBACK ---
+Rewards points are posted to the account within two billing cycles of the qualifying transaction. Points expiration occurs after 36 months of account inactivity. If points fail to post within two billing cycles, customers should contact support with the transaction date and amount. Cashback tiers are defined in the cardholder agreement and are subject to change with 30 days written notice.
+
+--- INTEREST RATES ---
+The Annual Percentage Rate (APR) is disclosed at account opening and is subject to change based on the Prime Rate for variable-rate accounts. Fixed-rate accounts may have their rate changed with 45 days advance notice. Customers who believe their rate was changed without proper notice may file a formal complaint within 90 days.
+
+--- ACCOUNT CLOSURE ---
+Customers may close their account at any time by contacting customer service. Any remaining balance is subject to the existing APR until paid in full. Unused rewards points are forfeited 30 days after account closure unless the customer requests a redemption before closing.

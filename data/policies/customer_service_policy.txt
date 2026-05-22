@@ -1,0 +1,24 @@
+POLICY DOCUMENT: Customer Service Standards
+Document ID: POL-CS-001
+Last Updated: 2025-01-01
+
+--- HOLD TIMES AND CALLBACKS ---
+The target maximum hold time for inbound calls is 10 minutes. If a customer is placed on hold for more than 10 minutes and the call is subsequently disconnected, the system must automatically schedule a callback within 2 hours. Callbacks are made to the number the customer called from unless they specify otherwise. If a callback is missed, a second attempt is made within 1 hour.
+
+--- REPRESENTATIVE CONDUCT ---
+All customer service representatives are expected to treat customers with respect and professionalism at all times. Customers who experience dismissive, rude, or unprofessional conduct may request to speak with a supervisor immediately. Supervisors must be available within 5 minutes of a request during business hours. Customers may also submit a formal conduct complaint through the bank's website or by mail.
+
+--- CASE NOTES AND CONTINUITY ---
+All interactions with a customer regarding an open issue must be documented in the customer's case record within 30 minutes of the call ending. If a customer calls back about the same issue, the representative must review prior case notes before beginning the conversation. Customers should not be required to re-explain their issue more than once if the issue is already documented.
+
+--- COMMITMENTS AND PROMISES ---
+Any commitment made by a representative — including fee waivers, callbacks, or account adjustments — must be documented in the customer's case record immediately and actioned within the timeframe stated. If a promised action was not completed, the bank is responsible for honoring the commitment retroactively and the representative's manager must be notified.
+
+--- ESCALATION ---
+Customers who are unsatisfied with the resolution offered by a front-line representative may request escalation to a supervisor or specialist team. Escalations must be acknowledged within 1 business day and resolved within 5 business days. If the issue involves a regulatory matter (such as a TILA or RESPA violation), the case is escalated to the compliance team, which has 10 business days to respond.
+
+--- FORMAL COMPLAINTS ---
+Customers wishing to file a formal written complaint may do so through the bank's website, by email, or by mail to the Customer Relations department. Formal complaints must receive a written acknowledgment within 3 business days and a substantive response within 15 business days. If the complaint involves a product covered by federal regulation (credit cards, mortgages, deposit accounts), the customer also has the right to file a complaint with the Consumer Financial Protection Bureau (CFPB).
+
+--- COMPLIMENTS ---
+Customer compliments for specific employees should be submitted to the Customer Relations department. Compliments are documented in the employee's performance record and are used in annual performance reviews.

@@ -1,0 +1,711 @@
+---
+title: "GenAI Labeling: Few-Shot Classification and Hallucination Evaluation with Claude"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+This notebook replaces the hand-crafted TF-IDF + Logistic Regression pipeline
+from notebook 1 with a large language model (LLM). Instead of training a
+classifier from scratch, we write a prompt that describes the task and shows the
+model a few labeled examples — a technique called **few-shot prompting**. The
+model uses its pre-trained understanding of language to generalize from those
+examples to new complaints it has never seen.
+
+The workflow has two phases:
+
+**Phase 1 — Classification.** We send each unlabeled complaint to Claude with a
+prompt that includes the list of valid categories and a few examples of each.
+Claude returns a predicted category and a brief reasoning explanation.
+
+**Phase 2 — Hallucination evaluation.** A second Claude call acts as a judge.
+It reads the original complaint text, the predicted label, and the reasoning,
+then decides whether the reasoning is grounded in the actual text or whether
+the model invented details that were not there. This is a common pattern in
+production LLM systems called **LLM-as-a-judge**.
+
+### Why two separate models / calls?
+
+Using the same model to both produce an answer and judge its own answer is
+unreliable — models tend to agree with themselves. By separating the classifier
+call from the evaluator call (and using a different prompt framing), we get a
+more independent quality signal.
+
+---
+
+## 1. Setup and API Connection
+
+The Anthropic SDK communicates with Claude over HTTPS. Your API key
+authenticates the requests. We load it from a `.env` file rather than
+hardcoding it in the notebook — this prevents the key from being accidentally
+committed to git or shared with someone who reads the notebook output.
+
+Create a file called `.env` in the project root (next to `pyproject.toml`)
+with this content:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...your key here...
+```
+
+```{python}
+import os
+import sqlite3
+import json
+import time
+import pandas as pd
+from pathlib import Path
+from dotenv import load_dotenv
+import anthropic
+
+# Load environment variables from .env file in the project root.
+# load_dotenv() searches upward from the current directory until it finds .env.
+env_path = Path.cwd().parent / ".env"
+if not env_path.exists():
+    env_path = Path.cwd() / ".env"
+load_dotenv(env_path)
+
+api_key = os.getenv("ANTHROPIC_API_KEY")
+if not api_key:
+    raise EnvironmentError(
+        "ANTHROPIC_API_KEY not found. "
+        "Create a .env file in the project root with: ANTHROPIC_API_KEY=sk-ant-..."
+    )
+
+# Instantiate the client. All API calls go through this object.
+client = anthropic.Anthropic(api_key=api_key)
+print("Anthropic client ready.")
+```
+
+---
+
+## 2. Load Data
+
+We pull two tables:
+
+- `complaints_unlabeled` — the complaints we want to classify (no category column).
+- `complaints` — the original labeled table, used later to evaluate accuracy
+  and to build our few-shot examples.
+
+```{python}
+DB_PATH = Path.cwd().parent / "data" / "complaints.db"
+if not DB_PATH.exists():
+    DB_PATH = Path.cwd() / "data" / "complaints.db"
+
+conn = sqlite3.connect(DB_PATH)
+df_unlabeled = pd.read_sql_query("SELECT * FROM complaints_unlabeled", conn)
+df_labeled   = pd.read_sql_query("SELECT * FROM complaints", conn)
+conn.close()
+
+print(f"Unlabeled complaints : {len(df_unlabeled)}")
+print(f"Labeled complaints   : {len(df_labeled)}")
+print()
+df_unlabeled.head(3)
+```
+
+---
+
+## 3. Define the Valid Categories
+
+The model needs to know which labels are allowed. By giving it an explicit
+closed list we prevent it from inventing new category names and keep the output
+consistent enough to compare against the ground truth labels.
+
+```{python}
+CATEGORIES = sorted(df_labeled["product_category"].unique().tolist())
+print("Valid categories:")
+for c in CATEGORIES:
+    print(f"  - {c}")
+```
+
+---
+
+## 4. Build Few-Shot Examples
+
+Few-shot prompting means including a small number of labeled examples directly
+in the prompt so the model can see the pattern before it classifies a new input.
+This is different from fine-tuning — we are not changing the model's weights,
+just giving it context in the prompt itself.
+
+We select **two examples per category** from the labeled table — one clean,
+well-written complaint and one noisier, informal one. Mixing styles helps the
+model handle the full range of real inputs rather than only learning from
+polished examples.
+
+```{python}
+random_state = 42
+
+few_shot_examples = []
+
+for category in CATEGORIES:
+    pool = df_labeled[df_labeled["product_category"] == category]
+
+    # Prefer one "clean" example (longer, contains punctuation) and one noisy one.
+    clean = pool[pool["complaint_text"].str.len() > 80].sample(
+        1, random_state=random_state
+    )
+    noisy = pool[pool["complaint_text"].str.len() <= 80].sample(
+        1, random_state=random_state
+    )
+
+    for _, row in pd.concat([clean, noisy]).iterrows():
+        few_shot_examples.append({
+            "text"    : row["complaint_text"],
+            "category": row["product_category"],
+        })
+
+print(f"Built {len(few_shot_examples)} few-shot examples  ({len(CATEGORIES)} categories x 2)")
+print()
+# Show a sample so we can verify the selection looks reasonable.
+for ex in few_shot_examples[:4]:
+    print(f"[{ex['category']}]")
+    print(f"  {ex['text']}")
+    print()
+```
+
+---
+
+## 5. Build the Classification Prompt
+
+A well-structured prompt has three parts:
+
+1. **System message** — tells the model its role and the rules it must follow.
+   This is injected once and applies to every request.
+2. **Few-shot block** — the labeled examples formatted so the model sees the
+   input/output pattern clearly.
+3. **User message** — the actual complaint to classify, plus instructions for
+   the output format.
+
+We ask the model to return **JSON** with three fields:
+- `category` — one of the 10 valid labels
+- `confidence` — `"high"`, `"medium"`, or `"low"` (self-reported)
+- `reasoning` — one sentence explaining which words or phrases in the text
+  drove the decision
+
+Requesting reasoning serves two purposes: it improves classification accuracy
+(the model "thinks out loud" before committing to a label) and it gives the
+hallucination evaluator something concrete to check.
+
+```{python}
+SYSTEM_PROMPT = f"""You are a customer complaint routing assistant for a financial services company.
+
+Your job is to read a customer complaint and assign it to exactly one of the following product categories:
+
+{chr(10).join(f"  - {c}" for c in CATEGORIES)}
+
+Rules:
+- You must choose exactly one category from the list above. Do not invent new categories.
+- If the complaint is vague or could fit multiple categories, choose the single best fit.
+- Respond only with valid JSON. Do not include any text outside the JSON object.
+
+Response format:
+{{
+  "category": "<one of the categories above>",
+  "confidence": "<high | medium | low>",
+  "reasoning": "<one sentence citing specific words or phrases from the complaint text>"
+}}"""
+
+
+def build_few_shot_block(examples: list[dict]) -> str:
+    """Format the few-shot examples as a readable block inside the user message."""
+    lines = ["Here are labeled examples to guide your classification:\n"]
+    for ex in examples:
+        lines.append(f'Complaint: "{ex["text"]}"')
+        lines.append(f'Label: {ex["category"]}\n')
+    return "\n".join(lines)
+
+
+FEW_SHOT_BLOCK = build_few_shot_block(few_shot_examples)
+
+# Preview what the prompt looks like before sending anything to the API.
+print("=== SYSTEM PROMPT ===")
+print(SYSTEM_PROMPT[:400], "...")
+print()
+print("=== FEW-SHOT BLOCK (first 500 chars) ===")
+print(FEW_SHOT_BLOCK[:500], "...")
+```
+
+---
+
+## 6. Classify a Single Complaint (Test Run)
+
+Before looping over all 500 complaints, we test on one to verify the prompt
+structure and output format work as expected. This is good practice any time
+you are about to make many API calls — catch problems early on a single cheap
+request.
+
+`max_tokens` caps how long the response can be. Our JSON output is short so
+256 tokens is more than enough. Setting it prevents runaway responses and
+reduces cost.
+
+```{python}
+def strip_code_fence(text: str) -> str:
+    """
+    Remove markdown code fences that LLMs sometimes wrap around JSON output.
+    e.g. ```json\n{...}\n``` -> {...}
+    This is a common issue: even when prompted to return only JSON, models
+    often add a ```json ... ``` wrapper. We strip it before parsing.
+    """
+    text = text.strip()
+    if text.startswith("```"):
+        # Drop the opening fence line (```json or just ```)
+        text = text.split("\n", 1)[-1]
+        # Drop the closing fence if present
+        if text.endswith("```"):
+            text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
+def classify_complaint(text: str) -> dict:
+    """
+    Send one complaint to Claude for classification.
+    Returns a dict with keys: category, confidence, reasoning.
+    On parse failure returns category='PARSE_ERROR' with the raw response.
+    """
+    user_message = f"{FEW_SHOT_BLOCK}\nNow classify this complaint:\n\"{text}\""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",   # fast + affordable for bulk classification
+        max_tokens=256,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    raw = strip_code_fence(response.content[0].text)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"category": "PARSE_ERROR", "confidence": "low", "reasoning": raw}
+
+
+# Test on one complaint.
+sample_text = df_unlabeled["complaint_text"].iloc[0]
+print(f"Input : {sample_text}")
+print()
+result = classify_complaint(sample_text)
+print(f"Output: {json.dumps(result, indent=2)}")
+```
+
+---
+
+## 7. Classify All Complaints
+
+Now we loop over every row in the unlabeled table. A few practical details:
+
+- **`time.sleep(0.1)`** — adds a small pause between requests to stay within
+  the API rate limit. Without this, sending 500 requests in rapid succession
+  can trigger HTTP 429 (Too Many Requests) errors.
+- **Error handling** — network errors or malformed responses are caught and
+  stored as `"API_ERROR"` rather than crashing the whole loop.
+- **Progress printing** — shows a line every 50 complaints so you can see it
+  working and estimate how long it will take.
+
+> **Cost note:** This cell makes ~150 API calls to `claude-haiku-4-5-20251001`.
+> Haiku is the most affordable Claude model. At typical pricing this run costs
+> roughly $0.01–0.02 USD total.
+
+```{python}
+# VALID_CATEGORIES is a lowercase set used to snap model output to the canonical
+# label list. Claude occasionally returns slightly different casing or adds a
+# trailing period; normalizing here prevents those from becoming PARSE_ERRORs.
+VALID_CATEGORIES_LOWER = {c.lower(): c for c in CATEGORIES}
+
+
+def normalize_category(raw: str) -> str:
+    """Return the canonical category name, or 'PARSE_ERROR' if unrecognized."""
+    return VALID_CATEGORIES_LOWER.get(raw.strip().lower(), "PARSE_ERROR")
+
+
+results = []
+
+for i, (_, row) in enumerate(df_unlabeled.head(150).iterrows()):
+    try:
+        result = classify_complaint(row["complaint_text"])
+    except Exception as e:
+        result = {"category": "API_ERROR", "confidence": "low", "reasoning": str(e)}
+
+    raw_category = result.get("category", "PARSE_ERROR")
+    # Normalize the returned category to guard against casing/whitespace drift.
+    predicted = normalize_category(raw_category) if raw_category not in ("API_ERROR",) else raw_category
+
+    results.append({
+        "id"                 : row["id"],
+        "complaint_text"     : row["complaint_text"],
+        "predicted_category" : predicted,
+        "confidence"         : result.get("confidence", "unknown"),
+        "reasoning"          : result.get("reasoning", ""),
+    })
+
+    if (i + 1) % 50 == 0:
+        print(f"  Classified {i + 1} / {len(df_unlabeled)} complaints...")
+
+    time.sleep(0.1)
+
+df_results = pd.DataFrame(results)
+n_errors = df_results["predicted_category"].isin(["PARSE_ERROR", "API_ERROR"]).sum()
+print(f"\nDone. {len(df_results)} complaints classified.")
+print(f"Parse/API errors : {n_errors}")
+print(f"Unique predicted categories: {sorted(df_results['predicted_category'].unique())}")
+print()
+df_results.head(5)
+```
+
+---
+
+## 8. Attach True Labels and Evaluate Accuracy
+
+We merge the true `product_category` labels back in from the original table
+so we can measure how well the LLM did compared to the ground truth.
+
+```{python}
+from sklearn.metrics import classification_report, accuracy_score
+
+# Merge true labels by id.
+df_eval = df_results.merge(
+    df_labeled[["id", "product_category"]].rename(columns={"product_category": "true_category"}),
+    on="id",
+)
+
+print(f"Rows after merge       : {len(df_eval)}  (expected {len(df_results)})")
+print(f"Unmatched rows         : {len(df_results) - len(df_eval)}")
+
+# Filter to rows where classification succeeded.
+df_valid = df_eval[~df_eval["predicted_category"].isin(["PARSE_ERROR", "API_ERROR"])].copy()
+print(f"Valid (non-error) rows : {len(df_valid)}")
+print()
+
+if len(df_valid) == 0:
+    print("ERROR: df_valid is empty — all predictions were PARSE_ERROR or API_ERROR.")
+    print("Check that your API key is set and the classify_complaint() cell ran successfully.")
+else:
+    print(f"Overall accuracy: {accuracy_score(df_valid['true_category'], df_valid['predicted_category']):.2%}")
+    print()
+    print(classification_report(df_valid["true_category"], df_valid["predicted_category"]))
+```
+
+---
+
+## 9. Confidence vs. Accuracy
+
+The model self-reports a confidence level for each prediction. Here we check
+whether that self-reported confidence actually correlates with accuracy — i.e.,
+are "high confidence" predictions actually more accurate than "low confidence"
+ones? If yes, confidence is a useful signal for routing borderline cases to
+human review (same idea as threshold tuning in notebook 1, but the model
+generates the signal itself rather than us computing it from probabilities).
+
+```{python}
+import matplotlib.pyplot as plt
+
+conf_accuracy = (
+    df_valid
+    .assign(correct=df_valid["true_category"] == df_valid["predicted_category"])
+    .groupby("confidence")["correct"]
+    .agg(["mean", "count"])
+    .rename(columns={"mean": "accuracy", "count": "n"})
+    .reindex(["high", "medium", "low"])
+)
+
+print(conf_accuracy)
+print()
+
+fig, ax = plt.subplots(figsize=(6, 4))
+bars = ax.bar(conf_accuracy.index, conf_accuracy["accuracy"], color=["#2ecc71", "#f39c12", "#e74c3c"])
+ax.set_ylim(0, 1.05)
+ax.set_xlabel("Self-reported confidence")
+ax.set_ylabel("Actual accuracy")
+ax.set_title("Does the model know when it is uncertain?")
+for bar, (_, row) in zip(bars, conf_accuracy.iterrows()):
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+            f"n={int(row['n'])}", ha="center", fontsize=9)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 10. Hallucination Evaluation
+
+This is the second LLM call — the **judge**. For each classified complaint the
+judge reads three things:
+
+1. The original complaint text.
+2. The predicted category.
+3. The reasoning the classifier gave.
+
+It then decides whether the reasoning is **grounded** (every claim in the
+reasoning can be traced to actual words in the complaint text) or
+**hallucinated** (the reasoning contains details, assumptions, or inferences
+that are not supported by the text).
+
+### Why this matters
+
+LLMs sometimes produce fluent, confident-sounding reasoning that invents details
+not present in the input — this is called hallucination. In a routing system
+this is dangerous: a hallucinated reasoning might say "the customer mentioned
+their mortgage escrow" when the complaint never mentions a mortgage at all.
+The judge model catches this automatically so a human reviewer doesn't have to
+read every single reasoning string.
+
+We run the evaluator on a **sample of 50 complaints** to keep cost low while
+still getting a representative picture of hallucination rate.
+
+```{python}
+JUDGE_SYSTEM_PROMPT = """You are a quality auditor evaluating the output of an AI complaint classifier.
+
+You will be given:
+1. The original complaint text
+2. The predicted product category
+3. The reasoning the classifier gave for its decision
+
+Your job is to decide whether the reasoning is grounded in the complaint text
+or whether it contains hallucinated details — claims about the complaint that
+are not actually present in the text.
+
+Respond only with valid JSON in this exact format:
+{
+  "verdict": "<grounded | hallucinated>",
+  "explanation": "<one sentence citing specific evidence for your verdict>"
+}"""
+
+
+def evaluate_reasoning(complaint_text: str, predicted_category: str, reasoning: str) -> dict:
+    """Call the judge model to assess whether the classifier's reasoning is grounded."""
+    user_message = f"""Original complaint:
+\"{complaint_text}\"
+
+Predicted category: {predicted_category}
+
+Classifier reasoning:
+\"{reasoning}\"
+
+Is the reasoning grounded in the complaint text, or does it contain hallucinated details?"""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=256,
+        system=JUDGE_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    raw = strip_code_fence(response.content[0].text)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"verdict": "PARSE_ERROR", "explanation": raw}
+
+
+# Sample 50 rows for evaluation — stratified by category for a representative spread.
+# We sample up to 5 rows per category then cap at 50 total.
+# include_groups=False avoids a pandas deprecation warning in newer versions.
+eval_sample = (
+    df_valid
+    .groupby("true_category", group_keys=False)
+    .apply(lambda g: g.sample(min(5, len(g)), random_state=42))
+    .reset_index(drop=True)
+    .head(50)
+)
+
+# Ensure true_category is present — groupby can drop it in some pandas versions.
+if "true_category" not in eval_sample.columns:
+    eval_sample = eval_sample.merge(
+        df_valid[["id", "true_category"]], on="id", how="left"
+    )
+
+print(f"Columns available: {list(eval_sample.columns)}")
+print(f"Evaluating {len(eval_sample)} complaints for hallucination...")
+```
+
+---
+
+## 11. Run the Judge
+
+```{python}
+judge_results = []
+
+for i, (_, row) in enumerate(eval_sample.iterrows()):
+    try:
+        verdict = evaluate_reasoning(
+            row["complaint_text"],
+            row["predicted_category"],
+            row["reasoning"],
+        )
+    except Exception as e:
+        verdict = {"verdict": "API_ERROR", "explanation": str(e)}
+
+    judge_results.append({
+        "id"                : row["id"],
+        "complaint_text"    : row["complaint_text"],
+        "true_category"     : row["true_category"],
+        "predicted_category": row["predicted_category"],
+        "classifier_reasoning": row["reasoning"],
+        "judge_verdict"     : verdict.get("verdict", "PARSE_ERROR"),
+        "judge_explanation" : verdict.get("explanation", ""),
+    })
+
+    if (i + 1) % 10 == 0:
+        print(f"  Evaluated {i + 1} / {len(eval_sample)}...")
+
+    time.sleep(0.1)
+
+df_judge = pd.DataFrame(judge_results)
+print(f"\nDone.")
+print(df_judge["judge_verdict"].value_counts())
+```
+
+---
+
+## 12. Inspect Hallucinated Reasonings
+
+Reading the flagged cases is the most instructive part. Look for patterns:
+does the model hallucinate more on short/vague complaints? On complaints that
+could belong to multiple categories? On cases where it also predicted the wrong
+category?
+
+```{python}
+df_hallucinated = df_judge[df_judge["judge_verdict"] == "hallucinated"].copy()
+df_grounded     = df_judge[df_judge["judge_verdict"] == "grounded"].copy()
+
+halluc_rate = len(df_hallucinated) / len(df_judge[df_judge["judge_verdict"].isin(["grounded", "hallucinated"])])
+print(f"Hallucination rate : {halluc_rate:.1%}  ({len(df_hallucinated)} / {len(df_judge)} evaluated)")
+print(f"Grounded rate      : {1 - halluc_rate:.1%}")
+print()
+
+if len(df_hallucinated) > 0:
+    print("=== Hallucinated examples ===")
+    for _, row in df_hallucinated.head(5).iterrows():
+        print(f"Complaint   : {row['complaint_text']}")
+        print(f"True label  : {row['true_category']}")
+        print(f"Predicted   : {row['predicted_category']}")
+        print(f"Reasoning   : {row['classifier_reasoning']}")
+        print(f"Judge says  : {row['judge_explanation']}")
+        print()
+else:
+    print("No hallucinations detected in this sample.")
+```
+
+---
+
+## 13. Hallucination Rate by Category and Correctness
+
+Two natural follow-up questions: does hallucination rate vary by product
+category (some topics harder to reason about than others)? And does
+hallucination correlate with being wrong — i.e., does the model make up details
+to justify an incorrect prediction?
+
+```{python}
+import seaborn as sns
+
+df_judge["correct"]      = df_judge["true_category"] == df_judge["predicted_category"]
+df_judge["hallucinated"] = df_judge["judge_verdict"] == "hallucinated"
+
+# Hallucination rate: correct vs. incorrect predictions.
+print("Hallucination rate by prediction correctness:")
+print(df_judge.groupby("correct")["hallucinated"].mean().rename({True: "Correct", False: "Wrong"}).to_string())
+print()
+
+# Hallucination rate per category (for categories with at least 2 evaluated rows).
+cat_halluc = (
+    df_judge
+    .groupby("true_category")["hallucinated"]
+    .agg(["mean", "count"])
+    .rename(columns={"mean": "halluc_rate", "count": "n"})
+    .query("n >= 2")
+    .sort_values("halluc_rate", ascending=False)
+)
+
+print("Hallucination rate by category:")
+print(cat_halluc.to_string())
+
+fig, ax = plt.subplots(figsize=(9, 4))
+ax.barh(cat_halluc.index, cat_halluc["halluc_rate"], color="salmon")
+ax.set_xlabel("Hallucination rate")
+ax.set_title("Hallucination Rate by Product Category")
+ax.set_xlim(0, 1)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 14. Save Results to the Database
+
+Write the classification results and judge verdicts back to SQLite so they are
+available for future analysis without re-running the (paid) API calls.
+
+```{python}
+conn = sqlite3.connect(DB_PATH)
+
+# Drop and recreate the results table so re-runs give a clean slate.
+conn.execute("DROP TABLE IF EXISTS llm_classifications")
+conn.execute("""
+    CREATE TABLE llm_classifications (
+        id                   INTEGER PRIMARY KEY,
+        complaint_text       TEXT,
+        predicted_category   TEXT,
+        confidence           TEXT,
+        reasoning            TEXT,
+        true_category        TEXT,
+        judge_verdict        TEXT,
+        judge_explanation    TEXT
+    )
+""")
+
+# Merge judge results back onto the full result set.
+df_final = df_eval.merge(
+    df_judge[["id", "judge_verdict", "judge_explanation"]],
+    on="id",
+    how="left",
+)
+
+df_final.to_sql("llm_classifications", conn, if_exists="replace", index=False)
+conn.commit()
+conn.close()
+
+print(f"Saved {len(df_final)} rows to llm_classifications table.")
+print()
+print(df_final[["id", "predicted_category", "confidence", "judge_verdict"]].head(8).to_string(index=False))
+```
+
+---
+
+## Summary
+
+| Step | What we did | Key tool |
+|---|---|---|
+| Setup | Loaded API key from `.env`, instantiated client | `anthropic`, `python-dotenv` |
+| Load data | Read unlabeled complaints + labeled table for few-shot examples | `sqlite3`, `pandas` |
+| Few-shot examples | Selected 2 examples per category (clean + noisy) | `pandas` |
+| Prompt design | System prompt with closed category list + JSON output format | — |
+| Test run | Classified one complaint to verify prompt before bulk run | `anthropic` |
+| Bulk classification | Classified all 500 complaints with rate limiting | `anthropic` |
+| Accuracy | Compared predicted vs. true labels | `sklearn.metrics` |
+| Confidence check | Verified self-reported confidence correlates with accuracy | `matplotlib` |
+| Hallucination eval | Judge model assessed whether reasoning was grounded | `anthropic` |
+| Inspect results | Read flagged hallucinations, computed rates by category | `pandas` |
+| Persist | Wrote all results to `llm_classifications` SQLite table | `sqlite3` |
+
+**Key concepts introduced:**
+
+| Concept | What it means |
+|---|---|
+| Few-shot prompting | Showing labeled examples in the prompt so the model generalizes without re-training |
+| Closed-set classification | Restricting the model to a known label list to keep output consistent |
+| JSON output format | Structuring model output so it can be parsed programmatically |
+| LLM-as-a-judge | Using a second model call to evaluate the quality of a first model call |
+| Hallucination | When a model produces reasoning not grounded in the input text |
+
+**Next steps to explore:**
+
+- Try `claude-sonnet-4-6` instead of Haiku for the classifier and compare accuracy — does the stronger model make fewer errors on the ambiguous/vague complaints?
+- Add a **chain-of-thought** step: ask the model to list evidence from the text before naming the category, then see if structured reasoning reduces hallucination rate.
+- Compare LLM accuracy against the Logistic Regression baseline from notebook 1 on the same test set — which approach handles the noisy/vague complaints better?
+- Use the `judge_verdict` column to build a filtered, high-quality labeled dataset: keep only rows where the judge said "grounded" and use those as training data for the traditional classifier.

@@ -1,0 +1,27 @@
+POLICY DOCUMENT: Checking and Savings Account Services
+Document ID: POL-DDA-001
+Last Updated: 2025-01-01
+
+--- OVERDRAFT FEES ---
+An overdraft fee of $35 is charged when a transaction causes the account balance to go negative. If a deposit and a debit transaction are both processed on the same business day and the deposit was received before the debit transaction, no overdraft fee will be charged. The bank processes transactions in the following order: credits first, then debits from smallest to largest. Customers are eligible for one overdraft fee reversal per 12-month period as a courtesy. Customers who enroll in overdraft protection linked to a savings account will not be charged an overdraft fee; instead, the shortfall is transferred automatically.
+
+--- DIRECT DEPOSIT ---
+Direct deposits are posted as soon as they are received from the originating institution, typically by 9:00 AM on the scheduled payment date. If a direct deposit does not arrive on the expected date, customers should contact support after 9:00 AM. Delays are usually caused by the sending institution and are outside the bank's control. The bank will provide documentation of the posting timeline upon request.
+
+--- MONTHLY MAINTENANCE FEES ---
+A monthly maintenance fee of $12 applies to checking accounts that do not meet one of the following waiver criteria: (1) maintain a minimum average daily balance of $1,500, (2) receive at least one qualifying direct deposit of $500 or more per month, or (3) are linked to a qualifying premium account. Customers must be given 60 days written notice before a new monthly fee is introduced or an existing fee is increased.
+
+--- DEBIT CARD REPLACEMENT ---
+A replacement debit card is issued automatically when a card is reported lost or stolen. Standard delivery takes 5 to 7 business days. Expedited delivery (1 to 2 business days) is available at no charge for customers who report fraud. Temporary virtual card numbers may be issued immediately upon request to allow continued access to funds.
+
+--- AVAILABLE VS. CURRENT BALANCE ---
+The current balance reflects all transactions that have fully posted to the account. The available balance reflects the current balance minus any holds placed on pending transactions (such as pre-authorization holds from gas stations or hotels). Customers should use the available balance when determining whether funds are accessible.
+
+--- SAVINGS ACCOUNT TRANSFERS AND WITHDRAWALS ---
+Federal regulations previously limited savings account withdrawals to 6 per month, though this limit has been lifted. The bank's policy allows unlimited transfers but may place a hold on large transfers (over $10,000) for up to 2 business days to verify funds. Interest (APY) is calculated daily and posted monthly. The APY is variable and is subject to change; customers are notified of rate changes on their monthly statement.
+
+--- ACCOUNT BENEFICIARIES ---
+Customers may designate one or more beneficiaries for their accounts through the online portal or by submitting a signed form to a branch. Beneficiary updates take effect within 2 business days of submission. Custodial accounts for minors require a Social Security number for both the custodian and the minor, along with a government-issued ID for the custodian.
+
+--- ACCOUNT CLOSURE WITHOUT NOTICE ---
+The bank may close an account for the following reasons: sustained negative balance for more than 60 days, suspected fraud or illegal activity, or violation of account terms. In all other cases, the customer must receive 30 days written notice before an account is closed. The bank must mail a check for any remaining balance within 5 business days of closure.

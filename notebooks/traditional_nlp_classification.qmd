@@ -1,0 +1,622 @@
+---
+title: "Traditional NLP: Classifying Customer Complaints"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+This notebook walks through a traditional NLP pipeline for classifying customer
+complaint text into product categories. We will go from raw text in a SQLite
+database all the way to a trained classifier, explaining each step along the way.
+
+The general workflow is:
+
+1. Load the data from SQLite
+2. Clean and preprocess the text
+3. Convert text to numbers (TF-IDF vectorization)
+4. Train a classifier (Logistic Regression)
+5. Evaluate how well it performs
+
+---
+
+## 1. Connect to the Database
+
+The complaint data lives in a SQLite file at `data/complaints.db`. SQLite is a
+lightweight database that is stored as a single file — no server required. Python's
+built-in `sqlite3` module can connect to it directly. We use `pandas` to read the
+query result into a DataFrame so the rest of the workflow can treat the data like a
+table.
+
+```{python}
+import sqlite3
+import pandas as pd
+from pathlib import Path
+
+# __file__ is not available in Jupyter kernels, so we use Path.cwd() at
+# runtime. When Quarto renders this notebook it sets the working directory
+# to the notebook's own folder, so ../data always resolves correctly.
+# If you run cells interactively and get an error, run:
+#   import os; os.chdir(r"c:\Users\corey\nlp-learning\notebooks")
+# once in a cell, then re-run from here.
+DB_PATH = Path.cwd().parent / "data" / "complaints.db"
+if not DB_PATH.exists():
+    # Fallback: look relative to the project root in case cwd is the root.
+    DB_PATH = Path.cwd() / "data" / "complaints.db"
+
+conn = sqlite3.connect(DB_PATH)
+df = pd.read_sql_query("SELECT * FROM complaints", conn)
+conn.close()
+
+print(f"Loaded {len(df)} rows")
+print(df.dtypes)
+```
+
+---
+
+## 2. Explore the Data
+
+Before doing any NLP it is important to understand what the data looks like. Here
+we check the shape, look at a few sample rows, and count how many complaints exist
+per product category. This tells us whether the classes are balanced (roughly equal
+counts) or imbalanced (some categories dominate), which matters later when we
+evaluate the classifier.
+
+```{python}
+# How many complaints are in each product category?
+print(df["product_category"].value_counts())
+print()
+
+# Print a few complaint texts so we can see what the model will learn from.
+for i, row in df[["product_category", "complaint_text"]].head(5).iterrows():
+    print(f"[{row['product_category']}]")
+    print(f"  {row['complaint_text']}")
+    print()
+
+```
+
+---
+
+## 3. Text Preprocessing
+
+Raw text is messy. Before we can convert it to numbers, we need to clean it up.
+The steps below are standard in traditional NLP pipelines:
+
+- **Lowercase** — so "Bank" and "bank" are treated as the same word.
+- **Remove punctuation and digits** — symbols rarely carry meaning for classification.
+- **Tokenize** — split the sentence into individual words (tokens).
+- **Remove stopwords** — words like "the", "a", "I", "was" appear everywhere and
+  add noise without adding signal about the complaint topic.
+- **Lemmatize** — reduce words to their base form so "charging", "charged", and
+  "charges" all become "charge". This shrinks the vocabulary and groups related words.
+
+```{python}
+import re # for regular expressions to clean text
+import nltk # natural language toolkit for preprocessing
+
+# Download the required NLTK data files the first time this runs.
+# These are small reference datasets (stopword lists, tokenizers, lemma rules).
+# the punkt_tab tokenizer is a faster version of the standard punkt tokenizer.
+# wordnet is needed for lemmatization. lemmatization is the process of reducing words to their base form (e.g. "running" -> "run").
+nltk.download("stopwords", quiet=True)
+nltk.download("punkt", quiet=True)
+nltk.download("punkt_tab", quiet=True)
+nltk.download("wordnet", quiet=True)
+
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+
+STOPWORDS = set(stopwords.words("english"))
+lemmatizer = WordNetLemmatizer() # create a lemmatizer instance to use in the preprocess function
+
+# Define a function that takes a raw complaint text and returns a cleaned version.
+def preprocess(text: str) -> str:
+    """Clean a single complaint string and return a processed version."""
+    # Step 1: lowercase everything
+    text = text.lower()
+
+    # Step 2: strip punctuation and digits, keep only letters and spaces
+    text = re.sub(r"[^a-z\s]", " ", text)
+
+    # Step 3: tokenize into individual words
+    tokens = word_tokenize(text)
+
+    # Step 4: remove stopwords and very short tokens (length <= 2)
+    tokens = [t for t in tokens if t not in STOPWORDS and len(t) > 2]
+
+    # Step 5: lemmatize — reduce each word to its dictionary base form
+    tokens = [lemmatizer.lemmatize(t) for t in tokens]
+
+    return " ".join(tokens)
+
+
+# Apply the preprocessing function to every row in the DataFrame.
+df["clean_text"] = df["complaint_text"].apply(preprocess)
+
+# Compare original vs. cleaned for a few rows so we can see what changed.
+for i, row in df[["complaint_text", "clean_text"]].head(5).iterrows():
+    print("ORIGINAL:", row["complaint_text"])
+    print("CLEANED: ", row["clean_text"])
+    print()
+```
+
+---
+
+## 4. TF-IDF Vectorization
+
+Machine learning models cannot work with raw strings — they need numbers. TF-IDF
+(Term Frequency–Inverse Document Frequency) is the classic way to convert text
+into a numeric matrix.
+
+- **Term Frequency (TF)**: how often a word appears in one document.
+- **Inverse Document Frequency (IDF)**: penalizes words that appear in almost every
+  document (they are not useful for distinguishing categories).
+
+The result is a matrix where each row is a complaint and each column is a word.
+The value in a cell represents how important that word is to that specific complaint
+relative to all others.
+
+`max_features=3000` caps the vocabulary at the 3,000 most useful words to keep
+the matrix manageable. `ngram_range=(1, 2)` means we also capture two-word phrases
+(bigrams) like "late fee" or "interest rate", which often carry more meaning than
+individual words alone.
+
+```{python}
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+vectorizer = TfidfVectorizer(max_features=3000, ngram_range=(1, 2))
+
+# fit_transform does two things at once:
+#   fit   — learns the vocabulary from the text
+#   transform — converts the text into the TF-IDF matrix
+X = vectorizer.fit_transform(df["clean_text"])
+
+# Our target (what we want to predict) is the product category.
+y = df["product_category"]
+
+print(f"Feature matrix shape: {X.shape}")
+print(f"  {X.shape[0]} complaints x {X.shape[1]} TF-IDF features")
+```
+
+---
+
+## 5. Train / Test Split
+
+To know whether our classifier actually learned something useful, we need to
+evaluate it on data it has never seen during training. We split the dataset into:
+
+- **Training set (80%)** — used to fit the model.
+- **Test set (20%)** — held back and used only to measure performance.
+
+`stratify=y` ensures that both splits have the same proportion of each category.
+Without this, random chance could put all examples of a rare category into the
+training set, leaving none to test on.
+
+```{python}
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print(f"Training samples : {X_train.shape[0]}")
+print(f"Test samples     : {X_test.shape[0]}")
+```
+
+---
+
+## 6. Train a Logistic Regression Classifier
+
+Logistic Regression is a simple but surprisingly effective classifier for text.
+It learns a weight for each TF-IDF feature that indicates how much that word
+pushes a document toward (or away from) each category.
+
+We use it here rather than a more complex model (like a neural network) because:
+
+- It trains fast even on a small dataset.
+- The learned weights are interpretable — we can see which words drive each category.
+- It tends to work well when TF-IDF features are already informative.
+
+`max_iter=1000` gives the optimizer enough iterations to converge.
+`C=1.0` is the regularization strength — higher values fit the training data more
+tightly, lower values produce a smoother model that generalizes better.
+
+```{python}
+from sklearn.linear_model import LogisticRegression
+
+clf = LogisticRegression(max_iter=1000, C=1.0, random_state=42)
+clf.fit(X_train, y_train)
+
+print("Model trained.")
+```
+
+---
+
+## 7. Evaluate the Classifier
+
+Now we measure how well the model performs on the held-out test set. The
+classification report shows:
+
+- **Precision** — of all the times the model predicted a category, how often was it right?
+- **Recall** — of all the actual examples of a category, how many did the model find?
+- **F1-score** — the harmonic mean of precision and recall; a single number that
+  balances both. Closer to 1.0 is better.
+- **Support** — how many real examples of that category were in the test set.
+
+Low scores on a category usually mean either (a) too few training examples or
+(b) that category's language overlaps heavily with another.
+
+```{python}
+from sklearn.metrics import classification_report, accuracy_score
+
+y_pred = clf.predict(X_test)
+
+print(f"Overall accuracy: {accuracy_score(y_test, y_pred):.2%}\n")
+print(classification_report(y_test, y_pred))
+```
+ The output of classification_report will show the precision, recall, F1-score, and support for each product category. Look for categories with low F1-scores to identify where the model struggles. Support is important to check because a category with very few examples may have unreliable metrics. If a category has very low support, consider collecting more training data for that category or combining it with a related category.
+
+---
+
+## 8. Confusion Matrix
+
+A confusion matrix shows exactly which categories the model mixes up. Each row
+represents the true category and each column represents what the model predicted.
+The diagonal (top-left to bottom-right) shows correct predictions — you want those
+numbers to be high. Off-diagonal numbers show where the model confused one category
+for another.
+
+```{python}
+import matplotlib.pyplot as plt
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
+categories = sorted(y.unique())
+cm = confusion_matrix(y_test, y_pred, labels=categories)
+
+fig, ax = plt.subplots(figsize=(10, 8))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=categories)
+disp.plot(ax=ax, xticks_rotation=45, colorbar=False)
+ax.set_title("Confusion Matrix — Predicted vs. Actual Category")
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 9. Most Informative Words per Category
+
+One advantage of Logistic Regression is that the model weights are interpretable.
+Each category has a coefficient for every word in the vocabulary. The words with
+the highest positive coefficients are the strongest predictors for that category.
+Looking at these helps us verify that the model learned sensible patterns rather
+than spurious correlations.
+
+```{python}
+import numpy as np
+
+feature_names = vectorizer.get_feature_names_out()
+TOP_N = 10
+
+for i, category in enumerate(clf.classes_):
+    # Get the model's coefficients for this category, sorted descending.
+    top_indices = np.argsort(clf.coef_[i])[::-1][:TOP_N]
+    top_words = [feature_names[j] for j in top_indices]
+    print(f"{category}")
+    print(f"  Top words: {', '.join(top_words)}")
+    print()
+```
+
+---
+
+## 10. Predict on New Text
+
+Finally, let's use the trained model to classify a brand-new complaint that was
+not in the dataset at all. This is the real-world use case — a customer submits a
+complaint and the model routes it to the right team automatically.
+
+The new text goes through the same preprocessing and vectorization pipeline we
+built above, then the model returns its predicted category along with the
+probability it assigned to each class.
+
+```{python}
+new_complaints = [
+    "My debit card was declined even though I had money in my account.",
+    "The interest rate on my loan is much higher than what I was promised.",
+    "The app keeps crashing whenever I try to view my transaction history.",
+]
+
+for text in new_complaints:
+    cleaned = preprocess(text)
+    vec = vectorizer.transform([cleaned])
+    predicted = clf.predict(vec)[0]
+    confidence = clf.predict_proba(vec).max()
+    print(f"Text      : {text}")
+    print(f"Predicted : {predicted}  (confidence: {confidence:.1%})")
+    print()
+```
+
+.max() returns the highest probability among the predicted classes, which gives us a sense of how confident the model is in its prediction. A confidence close to 100% means the model is very sure about its classification, while a lower confidence indicates more uncertainty. This can be useful for flagging cases where the model might want to defer to a human for review.
+---
+
+## 11. Per-Class Precision and Threshold Tuning
+
+### What is a decision threshold?
+
+When `clf.predict()` classifies a complaint it internally calls `predict_proba()`
+first, gets a probability for every category, and then picks whichever category
+has the highest probability. That "pick the highest" rule uses an implicit
+threshold of 0 — it always makes a prediction no matter how uncertain the model is.
+
+**Threshold tuning** changes that rule: for each category we set a minimum
+confidence the model must reach before it will commit to that label. If no
+category clears its threshold the complaint is flagged as **"Review needed"**
+and routed to a human. This directly trades recall (we label fewer complaints
+automatically) for precision (the ones we do label are more likely to be correct).
+
+This is especially useful in practice when the cost of a wrong label (routing a
+mortgage complaint to the credit card team) is higher than the cost of deferring
+to a human reviewer.
+
+---
+
+### Step 1 — Baseline per-class precision
+
+First, look at where precision is weakest before we tune anything. The
+`precision_score` function with `average=None` returns one score per class in
+alphabetical order.
+
+```{python}
+import numpy as np
+import pandas as pd
+from sklearn.metrics import precision_score
+
+# Get the model's probability estimates for every test complaint.
+# Shape: (n_test_samples, n_classes)  — one probability column per category.
+y_proba = clf.predict_proba(X_test)
+
+# Class order that sklearn uses internally — must match columns of y_proba.
+classes = clf.classes_
+
+baseline_precision = precision_score(y_test, y_pred, average=None, labels=classes)
+
+baseline_df = pd.DataFrame({
+    "category": classes,
+    "precision": baseline_precision,
+    "support": [(y_test == c).sum() for c in classes],
+}).sort_values("precision")
+
+print(baseline_df.to_string(index=False))
+```
+
+---
+
+### Step 2 — Precision vs. threshold curve per class
+
+This plot shows how precision changes as you raise the confidence threshold for
+each category. The x-axis is the threshold value (0 to 1) and the y-axis is the
+precision you get at that threshold. The shaded area shows the fraction of
+complaints that would still receive an automatic label at each threshold — as the
+threshold rises, fewer complaints are labeled (coverage shrinks) but the ones
+that are labeled become more accurate.
+
+Reading the chart: find the threshold on the x-axis where the precision line
+crosses your desired precision level. The shaded region tells you how much
+coverage you give up to get there. A curve that stays high and flat across the
+x-axis means you can push the threshold aggressively without sacrificing much
+precision; a curve that climbs steeply means even a small threshold increase
+buys a large precision gain.
+
+```{python}
+import matplotlib.pyplot as plt
+from sklearn.metrics import precision_recall_curve
+import numpy as np
+
+fig, axes = plt.subplots(2, 5, figsize=(16, 6))
+axes = axes.flatten()
+
+for i, category in enumerate(sorted(classes)):
+    y_binary = (y_test == category).astype(int)
+    col = list(classes).index(category)
+    probs = y_proba[:, col]
+
+    precision_vals, recall_vals, thresholds = precision_recall_curve(y_binary, probs)
+
+    # precision_recall_curve adds a final point at (precision=1, recall=0) with
+    # no matching threshold, so we drop the last value of each array to align them.
+    p = precision_vals[:-1]
+    r = recall_vals[:-1]
+    t = thresholds
+
+    ax = axes[i]
+
+    # Precision line — how accurate labels are at each threshold.
+    ax.plot(t, p, color="steelblue", lw=1.8, label="Precision")
+
+    # Shaded coverage band — fraction of complaints still auto-labeled at each threshold.
+    # Coverage = recall here because a higher threshold means fewer positive predictions.
+    ax.fill_between(t, r, alpha=0.15, color="steelblue", label="Coverage (recall)")
+
+    ax.set_title(category, fontsize=8)
+    ax.set_xlabel("Threshold", fontsize=7)
+    ax.set_ylabel("Precision / Coverage", fontsize=7)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.05)
+    ax.tick_params(labelsize=6)
+
+fig.suptitle("Precision vs. Confidence Threshold by Category\n(shaded = fraction of complaints still auto-labeled)", fontsize=10)
+plt.tight_layout()
+plt.show()
+```
+
+**How to read these charts:**
+
+- **Solid blue line — Precision.** This is the share of auto-labeled complaints
+  that were assigned the correct category. It generally rises as the threshold
+  increases because the model only commits to a label when it is more confident,
+  and higher-confidence predictions tend to be more accurate.
+
+- **Shaded blue region — Coverage.** This represents the fraction of complaints
+  in that category that would still receive an automatic label at a given
+  threshold (equivalent to recall). At a threshold of 0 the model labels
+  everything, so coverage is 100%. As the threshold rises the shaded area shrinks,
+  meaning more complaints get deferred to human review instead of being labeled
+  automatically.
+
+- **The tradeoff.** Every point along the x-axis represents a choice: move right
+  to get higher precision at the cost of lower coverage, or move left to label
+  more complaints automatically at the cost of accepting more labeling errors.
+  A good operating threshold is where the precision line reaches an acceptable
+  level while the shaded coverage region is still large enough to be useful.
+  A category whose precision line is already high at low thresholds (flat and
+  near 1.0 across the chart) needs little or no tuning. A category with a steep
+  rising curve has more room to improve precision by raising the threshold.
+
+---
+
+### Step 3 — Find the threshold that hits a precision target
+
+For each category we programmatically find the lowest threshold value that
+achieves a precision of at least 90%. Any complaint where the model's confidence
+for that category is below that threshold gets deferred instead of labeled.
+
+```{python}
+PRECISION_TARGET = 0.95
+
+thresholds_df = []
+
+for category in classes:
+    y_binary = (y_test == category).astype(int)
+    col = list(classes).index(category)
+    probs = y_proba[:, col]
+
+    precision_vals, recall_vals, thresholds = precision_recall_curve(y_binary, probs)
+
+    # precision_recall_curve returns one more precision/recall value than thresholds,
+    # so we align by dropping the last element of precision_vals and recall_vals.
+    for p, r, t in zip(precision_vals[:-1], recall_vals[:-1], thresholds):
+        if p >= PRECISION_TARGET:
+            thresholds_df.append({
+                "category": category,
+                "threshold": round(t, 3),
+                "precision_at_threshold": round(p, 3),
+                "recall_at_threshold": round(r, 3),
+            })
+            break   # first threshold that clears the target is the lowest (most inclusive)
+    else:
+        # No threshold achieves the target — precision never reaches 90% for this class.
+        thresholds_df.append({
+            "category": category,
+            "threshold": None,
+            "precision_at_threshold": None,
+            "recall_at_threshold": None,
+        })
+
+thresholds_df = pd.DataFrame(thresholds_df).sort_values("threshold")
+print(thresholds_df.to_string(index=False))
+```
+
+---
+
+### Step 4 — Apply per-class thresholds to the test set
+
+Now use those thresholds to re-classify the test complaints. For each complaint
+we look at the model's probability for every category. If the highest probability
+clears that category's threshold we assign the label; otherwise we mark it
+"Review needed."
+
+```{python}
+# Build a lookup: category -> minimum threshold.
+# Use 0.0 as fallback for any category where we found no threshold above.
+threshold_map = {
+    row["category"]: (row["threshold"] if row["threshold"] is not None else 0.0)
+    for _, row in thresholds_df.iterrows()
+}
+
+def predict_with_thresholds(proba_row, classes, threshold_map):
+    """Return the predicted label or 'Review needed' if no class clears its threshold."""
+    best_class = classes[np.argmax(proba_row)]
+    best_prob  = proba_row.max()
+    min_thresh = threshold_map.get(best_class, 0.0)
+    if best_prob >= min_thresh:
+        return best_class
+    return "Review needed"
+
+y_pred_tuned = np.array([
+    predict_with_thresholds(row, classes, threshold_map)
+    for row in y_proba
+])
+
+# Summarize what changed.
+n_deferred = (y_pred_tuned == "Review needed").sum()
+n_total    = len(y_pred_tuned)
+print(f"Complaints auto-labeled : {n_total - n_deferred} / {n_total}  ({(n_total-n_deferred)/n_total:.1%})")
+print(f"Deferred to human review: {n_deferred} / {n_total}  ({n_deferred/n_total:.1%})")
+```
+
+---
+
+### Step 5 — Compare precision before and after
+
+Finally, compare the baseline precision against the tuned precision for each
+category. We only evaluate on complaints that received an automatic label
+(excluding "Review needed") so the numbers reflect the quality of the
+labels that actually went out.
+
+```{python}
+from sklearn.metrics import classification_report
+
+# Filter to auto-labeled only for the precision comparison.
+auto_mask   = y_pred_tuned != "Review needed"
+y_test_auto = y_test[auto_mask]
+y_pred_auto = y_pred_tuned[auto_mask]
+
+tuned_precision = precision_score(
+    y_test_auto, y_pred_auto, average=None, labels=classes, zero_division=0
+)
+
+comparison = pd.DataFrame({
+    "category"        : classes,
+    "precision_before": baseline_precision.round(3),
+    "precision_after" : tuned_precision.round(3),
+    "delta"           : (tuned_precision - baseline_precision).round(3),
+    "support_original": [(y_test == c).sum() for c in classes],
+    "support_after"   : [(y_test_auto == c).sum() for c in classes],
+}).sort_values("delta", ascending=False)
+
+print(comparison.to_string(index=False))
+print()
+print(f"Auto-label precision (weighted avg): "
+      f"{(comparison['precision_after'] * comparison['support_after']).sum() / comparison['support_after'].sum():.3f}")
+```
+
+---
+
+## Summary
+
+| Step | What we did | Key tool |
+|---|---|---|
+| Load data | Connected to SQLite, read into DataFrame | `sqlite3`, `pandas` |
+| Preprocess | Lowercase, remove punctuation, remove stopwords, lemmatize | `nltk` |
+| Vectorize | Converted text to TF-IDF numeric matrix | `sklearn.TfidfVectorizer` |
+| Split | 80/20 train/test split, stratified | `sklearn.train_test_split` |
+| Train | Fit Logistic Regression classifier | `sklearn.LogisticRegression` |
+| Evaluate | Accuracy, precision, recall, F1, confusion matrix | `sklearn.metrics` |
+| Interpret | Top words per category from model weights | `numpy` |
+| Predict | Classify new unseen complaints | trained pipeline |
+| Threshold tuning | Per-class precision targets, defer low-confidence predictions | `sklearn.metrics` |
+
+**Next steps to explore:**
+
+- Swap in a different classifier (Random Forest, SVM, Naive Bayes) and compare F1 scores.
+- Use `spacy` for preprocessing instead of `nltk` — especially for named entity recognition.
+- Try predicting `sentiment_label` instead of `product_category` as a second exercise.
+- Replace TF-IDF with word embeddings (Word2Vec or spaCy vectors) for richer features.
+- Adjust `PRECISION_TARGET` from 0.90 to 0.95 and observe how many more complaints get deferred.

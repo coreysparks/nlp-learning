@@ -1,0 +1,21 @@
+POLICY DOCUMENT: Personal Loan Services
+Document ID: POL-LN-001
+Last Updated: 2025-01-01
+
+--- LOAN FUNDING TIMELINE ---
+Once a personal loan application is approved and all required documents are signed, funds are disbursed within 2 business days via ACH transfer to the designated bank account. If disbursement has not occurred within 3 business days of document signing, the customer should contact the loan servicing team. Wire transfer disbursement is available for an additional fee and typically completes the same business day.
+
+--- INTEREST RATE DISCLOSURES ---
+The interest rate and Annual Percentage Rate (APR) offered at application are based on the customer's credit profile at the time of the inquiry. The rate presented in the final loan agreement must match the rate quoted in the initial offer disclosure unless the customer's credit profile changed materially between application and closing. If the final rate differs from the quoted rate, the customer must be notified in writing and given the option to cancel without penalty.
+
+--- PREPAYMENT ---
+There is no prepayment penalty on personal loans. Customers may pay off their balance in full or make additional principal payments at any time without incurring fees. Extra payments are applied to the outstanding principal balance, which reduces the total interest paid over the life of the loan. Customers should confirm with the servicing team whether additional payments are applied to principal or next month's payment, as application rules may vary.
+
+--- AUTOPAY FAILURES ---
+If an autopay payment fails due to a bank error or system issue on the servicer's side, no late fee will be charged to the customer. If the failure is due to insufficient funds in the customer's account, a late fee may apply after a 5-day grace period. Customers who experience repeated autopay failures should contact support to verify their payment account details are correctly recorded.
+
+--- LOAN AMOUNT DISCREPANCIES ---
+The disbursed loan amount must match the approved amount stated in the loan agreement. If the disbursed amount is less than approved, the customer must be notified of the reason in writing within 2 business days. Common reasons include deductions for origination fees, which must be disclosed in the loan agreement prior to signing.
+
+--- PAYMENT DUE DATE CHANGES ---
+Customers may request a one-time payment due date change within the first 6 months of the loan. Subsequent changes may be granted at the servicer's discretion. Due date changes take effect on the following billing cycle and must be confirmed in writing to the customer.

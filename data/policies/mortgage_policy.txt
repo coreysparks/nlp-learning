@@ -1,0 +1,24 @@
+POLICY DOCUMENT: Mortgage Services
+Document ID: POL-MTG-001
+Last Updated: 2025-01-01
+
+--- ESCROW ACCOUNTS ---
+An escrow account is maintained on behalf of the borrower to collect and pay property taxes and homeowner's insurance. The escrow balance is reviewed annually. If the review determines a shortage or surplus, the monthly payment is adjusted accordingly. Customers must be notified of any payment change at least 30 days before the new amount takes effect. If a tax or insurance payment is sent to the wrong jurisdiction or carrier due to bank error, the bank is responsible for any resulting penalties or late fees.
+
+--- PAYOFF STATEMENTS ---
+A payoff statement provides the exact amount needed to fully pay off the mortgage on a given date. Payoff statements must be provided within 7 business days of a written request. If the request is made electronically through the customer portal, the statement is typically available within 3 business days. There is no fee for up to two payoff statements per year; additional requests may incur a $30 processing fee.
+
+--- LOAN MODIFICATIONS ---
+Customers experiencing financial hardship may apply for a loan modification, which can include a temporary payment reduction, interest rate adjustment, or term extension. Once a complete modification application is received, the bank must provide a decision within 30 days. If additional documentation is required, the customer must be notified within 5 business days of the application submission. Customers should not be required to be in default to apply for a modification.
+
+--- PMI REMOVAL ---
+Private Mortgage Insurance (PMI) can be requested for removal when the loan-to-value ratio (LTV) reaches 80% based on the original purchase price or a new appraisal. To request removal, the customer must submit a written request and may be required to obtain an appraisal at their expense. The bank must respond to a PMI removal request within 30 days. PMI is automatically cancelled when the LTV reaches 78% based on the original amortization schedule.
+
+--- PROPERTY TAX PAYMENTS ---
+The bank is responsible for ensuring property tax payments are made on time from the escrow account. If a payment is missed or sent to the wrong taxing authority due to bank error, the bank must cover any resulting late penalties and correct the error within 10 business days of discovery.
+
+--- REFINANCING ---
+Customers may inquire about refinancing options at any time. A refinance involves taking out a new mortgage loan to replace the existing one, typically to secure a lower interest rate or change the loan term. The application process includes a new credit review, appraisal, and title search. Closing costs typically range from 2% to 5% of the loan amount. Rate locks are available for 30, 45, or 60-day periods during the application process.
+
+--- CLOSING PROCESS ---
+The bank must provide a Closing Disclosure at least 3 business days before closing. All fees listed on the Closing Disclosure must match the Loan Estimate unless a valid change of circumstance occurred. Customers have the right to review all closing documents before signing.

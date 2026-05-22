@@ -1,0 +1,554 @@
+---
+title: "Unsupervised NLP: Clustering Customer Complaints with Embeddings"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+In the first notebook we used **supervised** classification — the model learned
+from labeled examples. This notebook takes the opposite approach: **unsupervised
+clustering**. We have a table of raw complaint texts with no category labels and
+we want the algorithm to discover natural groupings on its own.
+
+The workflow has three phases:
+
+1. **Embed** — convert each complaint into a dense numeric vector using a
+   pre-trained sentence embedding model. Unlike TF-IDF, embeddings capture
+   *meaning*, not just word frequency.
+2. **Reduce** — compress those high-dimensional vectors down to 2D using UMAP
+   so we can visualize and cluster them efficiently.
+3. **Cluster** — run HDBSCAN to find groups of similar complaints, then inspect
+   each cluster to assign a human-readable label.
+
+At the end we compare the discovered clusters against the real `product_category`
+labels from the original table to see how well unsupervised learning did.
+
+---
+
+## 1. Connect to the Unlabeled Table
+
+We created a separate table called `complaints_unlabeled` that contains the same
+complaint text but with all category information removed. This simulates the
+real-world scenario where new complaints arrive and no one has routed them yet.
+
+```{python}
+import sqlite3
+import pandas as pd
+from pathlib import Path
+
+DB_PATH = Path.cwd().parent / "data" / "complaints.db"
+if not DB_PATH.exists():
+    DB_PATH = Path.cwd() / "data" / "complaints.db"
+
+conn = sqlite3.connect(DB_PATH)
+
+# Load the unlabeled complaints — no product_category column here.
+df = pd.read_sql_query("SELECT * FROM complaints_unlabeled", conn)
+
+# Also load the original table so we can use the real labels for evaluation
+# at the very end. We keep this separate to avoid "peeking" during clustering.
+df_labeled = pd.read_sql_query(
+    "SELECT id, product_category, sentiment_label FROM complaints", conn
+)
+conn.close()
+
+print(f"Unlabeled complaints: {len(df)} rows")
+print(f"Columns available   : {list(df.columns)}")
+print()
+df.head(3)
+```
+
+---
+
+## 2. Preprocess the Text
+
+We apply the same cleaning steps from the first notebook — lowercase, strip
+punctuation, remove stopwords, lemmatize. Clean text produces better embeddings
+because noise words don't dilute the meaning signal.
+
+```{python}
+import re
+import nltk
+
+nltk.download("stopwords", quiet=True)
+nltk.download("punkt_tab", quiet=True)
+nltk.download("wordnet", quiet=True)
+
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+
+STOPWORDS = set(stopwords.words("english"))
+lemmatizer = WordNetLemmatizer()
+
+
+def preprocess(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", " ", text)
+    tokens = word_tokenize(text)
+    tokens = [lemmatizer.lemmatize(t) for t in tokens if t not in STOPWORDS and len(t) > 2]
+    return " ".join(tokens)
+
+
+df["clean_text"] = df["complaint_text"].apply(preprocess)
+
+# Spot-check a few rows.
+for _, row in df[["complaint_text", "clean_text"]].head(3).iterrows():
+    print("ORIGINAL:", row["complaint_text"])
+    print("CLEANED :", row["clean_text"])
+    print()
+```
+
+---
+
+## 3. Generate Sentence Embeddings
+
+This is the key upgrade over TF-IDF. Instead of counting words, we use a
+**pre-trained sentence transformer** model (`all-MiniLM-L6-v2`) to convert
+each complaint into a 384-dimensional vector where similar meanings end up
+close together in space.
+
+For example, "My card was declined" and "My debit card was rejected" would have
+very similar vectors even though they share few exact words. TF-IDF would treat
+them as quite different.
+
+The model downloads automatically on first run (~90 MB) and is cached locally
+for all future runs.
+
+```{python}
+from sentence_transformers import SentenceTransformer
+
+# Load the model. "all-MiniLM-L6-v2" is a good balance of speed and quality —
+# it's small enough to run on CPU in seconds but captures semantic meaning well.
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# encode() returns a NumPy array of shape (n_complaints, 384).
+# show_progress_bar=True prints a progress bar since this takes a few seconds.
+embeddings = model.encode(
+    df["clean_text"].tolist(),
+    show_progress_bar=True,
+    batch_size=64,
+)
+
+print(f"Embedding matrix shape: {embeddings.shape}")
+print(f"  {embeddings.shape[0]} complaints x {embeddings.shape[1]} dimensions")
+```
+
+---
+
+## 4. Reduce Dimensions with UMAP
+
+384 dimensions is far too many to cluster or visualize directly. UMAP (Uniform
+Manifold Approximation and Projection) compresses the embeddings down to 2
+dimensions while trying to preserve the neighborhood structure — complaints that
+were close together in 384D should still be close together in 2D.
+
+We actually run UMAP twice:
+
+- **5D version** — fed into HDBSCAN for clustering. More dimensions retain more
+  structure than 2D, giving the clustering algorithm a better signal.
+- **2D version** — used only for plotting so we can visually inspect the clusters.
+
+`n_neighbors` controls how locally vs. globally UMAP thinks. Lower values
+(5–15) preserve fine local structure; higher values (30–50) see the big picture.
+`min_dist` controls how tightly points are packed in the output.
+
+```{python}
+import umap
+import numpy as np
+
+# 5D reduction for clustering — retains more structure than 2D.
+reducer_5d = umap.UMAP(
+    n_components=5,
+    n_neighbors=15,
+    min_dist=0.1,
+    metric="cosine",
+    random_state=42,
+)
+embeddings_5d = reducer_5d.fit_transform(embeddings)
+
+# 2D reduction purely for visualization.
+reducer_2d = umap.UMAP(
+    n_components=2,
+    n_neighbors=15,
+    min_dist=0.1,
+    metric="cosine",
+    random_state=42,
+)
+embeddings_2d = reducer_2d.fit_transform(embeddings)
+
+print(f"5D shape : {embeddings_5d.shape}")
+print(f"2D shape : {embeddings_2d.shape}")
+```
+
+---
+
+## 5. Cluster with HDBSCAN
+
+HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with
+Noise) is one of the best algorithms for text clustering because:
+
+- You don't need to tell it how many clusters to find (unlike K-Means).
+- It handles clusters of unequal size and shape.
+- It labels low-density points as **noise** (cluster label `-1`) rather than
+  forcing every point into a cluster.
+
+Key parameters:
+- `min_cluster_size` — the smallest group HDBSCAN will call a real cluster.
+  Too small → many tiny clusters. Too large → everything merges into one.
+  This is the most important parameter to tune. With a value of 8 (roughly 4%
+  of the dataset) HDBSCAN found far more clusters than the 10 actual product
+  categories, because it treated sub-topics within a category as separate
+  clusters — for example splitting "Credit Card" into fraud complaints, fee
+  disputes, and rewards issues. Raising this to 20 forces the algorithm to
+  require larger, broader density regions before calling something a cluster,
+  which merges those sub-topic groups back together and produces results that
+  align much more closely with the real product categories.
+- `min_samples` — controls how conservative the algorithm is. Higher values
+  make it stricter about what counts as a core point.
+
+```{python}
+import hdbscan
+
+clusterer = hdbscan.HDBSCAN(
+    min_cluster_size=20,
+    min_samples=3,
+    metric="euclidean",
+    cluster_selection_method="eom",
+)
+clusterer.fit(embeddings_5d)
+
+df["cluster"] = clusterer.labels_
+
+n_clusters = len(set(clusterer.labels_)) - (1 if -1 in clusterer.labels_ else 0)
+n_noise    = (clusterer.labels_ == -1).sum()
+
+print(f"Clusters found : {n_clusters}")
+print(f"Noise points   : {n_noise} ({n_noise/len(df):.1%} of data)")
+print()
+print(df["cluster"].value_counts().sort_index())
+```
+
+---
+
+## 6. Visualize the Clusters
+
+Now we plot the 2D UMAP projection and color each point by its cluster label.
+This gives an intuitive view of how well-separated the clusters are. Tight,
+distinct blobs = clear topics. Overlapping smears = ambiguous boundaries.
+
+Grey points are noise — complaints HDBSCAN couldn't confidently assign to any
+cluster.
+
+```{python}
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import numpy as np
+
+fig, ax = plt.subplots(figsize=(11, 8))
+
+unique_clusters = sorted(set(df["cluster"]))
+# Build a color palette — noise gets grey, clusters get distinct colors.
+palette = cm.get_cmap("tab20", max(unique_clusters) + 1)
+
+for cluster_id in unique_clusters:
+    mask = df["cluster"] == cluster_id
+    color = "lightgrey" if cluster_id == -1 else palette(cluster_id)
+    label = "Noise" if cluster_id == -1 else f"Cluster {cluster_id}"
+    ax.scatter(
+        embeddings_2d[mask, 0],
+        embeddings_2d[mask, 1],
+        c=[color],
+        label=label,
+        s=40,
+        alpha=0.7,
+        edgecolors="none",
+    )
+
+ax.set_title("UMAP 2D Projection — HDBSCAN Clusters")
+ax.set_xlabel("UMAP Dimension 1")
+ax.set_ylabel("UMAP Dimension 2")
+ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 7. Inspect Clusters — What Did the Algorithm Find?
+
+Visualizing is great but we need to understand *what* each cluster represents.
+The best way is to read actual complaints from each group and look for the
+common thread. We also extract the top TF-IDF terms per cluster as a quick
+keyword summary.
+
+```{python}
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Only look at assigned points (exclude noise).
+df_assigned = df[df["cluster"] != -1].copy()
+
+# Fit a TF-IDF vectorizer on the cleaned text of assigned complaints.
+tfidf = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
+tfidf_matrix = tfidf.fit_transform(df_assigned["clean_text"])
+feature_names = tfidf.get_feature_names_out()
+
+for cluster_id in sorted(df_assigned["cluster"].unique()):
+    mask = df_assigned["cluster"] == cluster_id
+    cluster_texts = df_assigned[mask]
+
+    # Average the TF-IDF scores across all complaints in this cluster.
+    # The words with the highest average score are most characteristic of it.
+    avg_tfidf = tfidf_matrix[mask.values].toarray().mean(axis=0)
+    top_indices = avg_tfidf.argsort()[::-1][:8]
+    top_terms = [feature_names[i] for i in top_indices]
+
+    print(f"── Cluster {cluster_id}  ({len(cluster_texts)} complaints) ──")
+    print(f"   Top terms : {', '.join(top_terms)}")
+    print(f"   Samples   :")
+    for text in cluster_texts["complaint_text"].head(2).values:
+        print(f"     • {text}")
+    print()
+```
+
+---
+
+## 8. Assign Human-Readable Labels
+
+After reading the cluster contents above, we can give each cluster a descriptive
+name. This step is always manual — a human has to interpret what the algorithm
+found and decide what to call it.
+
+The dictionary below maps cluster IDs to label names. **You should update these
+after running section 7** based on what you actually see in your output, since
+cluster IDs may differ between runs.
+
+```{python}
+# Update this mapping based on what you observe in section 7.
+# The keys are HDBSCAN cluster IDs; the values are your interpretation.
+CLUSTER_LABELS = {
+    -1: "Unassigned / Noise",
+     0: "Fees & Charges",
+     1: "Loan & Mortgage Issues",
+     2: "App & Technology Problems",
+     3: "Insurance Claims",
+     4: "Account Access & Deposits",
+     5: "Investment & Brokerage",
+     6: "Customer Service Experience",
+     7: "Payments & Transfers",
+     8: "Rewards & Benefits",
+     9: "Policy & Terms Disputes",
+}
+
+# Apply the labels, defaulting to "Cluster N" for any IDs not in the dict.
+df["cluster_label"] = df["cluster"].apply(
+    lambda c: CLUSTER_LABELS.get(c, f"Cluster {c}")
+)
+
+print(df["cluster_label"].value_counts())
+```
+
+---
+
+## 9. Re-visualize with Labels
+
+Now we re-draw the scatter plot using the human-readable labels instead of raw
+cluster numbers. This is much more useful for communicating results to someone
+who wasn't involved in the analysis.
+
+```{python}
+fig, ax = plt.subplots(figsize=(11, 8))
+
+unique_labels = df["cluster_label"].unique()
+palette = cm.get_cmap("tab20", len(unique_labels))
+label_to_color = {label: palette(i) for i, label in enumerate(sorted(unique_labels))}
+label_to_color["Unassigned / Noise"] = "lightgrey"
+
+for label in sorted(unique_labels):
+    mask = df["cluster_label"] == label
+    ax.scatter(
+        embeddings_2d[mask, 0],
+        embeddings_2d[mask, 1],
+        c=[label_to_color[label]],
+        label=label,
+        s=40,
+        alpha=0.7,
+        edgecolors="none",
+    )
+
+ax.set_title("UMAP Projection — Labeled Complaint Clusters")
+ax.set_xlabel("UMAP Dimension 1")
+ax.set_ylabel("UMAP Dimension 2")
+ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 10. Compare Against Real Labels
+
+Now the moment of truth: how well do the unsupervised clusters align with the
+actual `product_category` labels from the original table? We merge the real
+labels back in and build a cross-tabulation (crosstab) — rows are our discovered
+clusters, columns are the true categories.
+
+A "good" cluster will have most of its complaints concentrated in one or two
+columns. Spread evenly across many columns means the cluster mixed together
+complaints that humans would route differently.
+
+```{python}
+import seaborn as sns
+
+# Merge real labels back using the original row index (id).
+# We join on position since both tables have the same 200 rows in the same order.
+df["true_category"] = df_labeled["product_category"].values
+df["true_sentiment"] = df_labeled["sentiment_label"].values
+
+# Build crosstab: discovered cluster (rows) vs. real category (columns).
+ct = pd.crosstab(
+    df["cluster_label"],
+    df["true_category"],
+)
+
+# Normalize by row so each row sums to 1 — easier to read as "% of cluster".
+ct_norm = ct.div(ct.sum(axis=1), axis=0)
+
+fig, ax = plt.subplots(figsize=(13, 7))
+sns.heatmap(
+    ct_norm,
+    annot=ct.values,       # show raw counts inside each cell
+    fmt="d",
+    cmap="YlOrRd",
+    linewidths=0.5,
+    ax=ax,
+    cbar_kws={"label": "Proportion of cluster"},
+)
+ax.set_title("Cluster vs. True Category  (color = proportion, number = count)")
+ax.set_xlabel("True Product Category")
+ax.set_ylabel("Discovered Cluster")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## 11. Purity Score
+
+Cluster purity is a single number that summarizes how well the clustering aligns
+with the true labels. For each cluster we find the most common true label and
+count how many complaints have that label. Purity is the total of those "best
+match" counts divided by all complaints.
+
+A purity of 1.0 = every cluster is perfectly homogeneous. A purity of 0.1 =
+the clustering is barely better than random. Values above 0.6 are generally
+considered reasonable for unsupervised text clustering on a real dataset.
+
+```{python}
+from sklearn.metrics import homogeneity_score, completeness_score, v_measure_score
+
+# Exclude noise points from the evaluation — they weren't assigned to any cluster.
+df_eval = df[df["cluster"] != -1].copy()
+
+# Purity: for each cluster, take the count of the most frequent true label.
+def cluster_purity(labels_true, labels_pred):
+    from collections import Counter
+    total = 0
+    for cluster_id in set(labels_pred):
+        mask = labels_pred == cluster_id
+        most_common_count = Counter(labels_true[mask]).most_common(1)[0][1]
+        total += most_common_count
+    return total / len(labels_pred)
+
+purity = cluster_purity(
+    df_eval["true_category"].values,
+    df_eval["cluster"].values,
+)
+
+# sklearn also provides homogeneity, completeness, and V-measure:
+# - Homogeneity: each cluster contains only members of a single true class.
+# - Completeness: all members of a true class are in the same cluster.
+# - V-measure: harmonic mean of homogeneity and completeness (like F1 for clustering).
+h = homogeneity_score(df_eval["true_category"], df_eval["cluster"])
+c = completeness_score(df_eval["true_category"], df_eval["cluster"])
+v = v_measure_score(df_eval["true_category"], df_eval["cluster"])
+
+print(f"Cluster purity  : {purity:.3f}  (1.0 = perfect)")
+print(f"Homogeneity     : {h:.3f}  (each cluster = one true class)")
+print(f"Completeness    : {c:.3f}  (each true class = one cluster)")
+print(f"V-measure       : {v:.3f}  (harmonic mean of above two)")
+print()
+print(f"Noise points excluded from evaluation: {(df['cluster'] == -1).sum()}")
+```
+
+---
+
+## 12. Save Cluster Assignments Back to the Database
+
+Once we are happy with the cluster labels we can write them back to the database.
+This turns the unlabeled table into a labeled one — created entirely from the
+text itself, with no human labeling effort beyond naming the clusters in step 8.
+
+```{python}
+conn = sqlite3.connect(DB_PATH)
+
+# Add the cluster columns to the unlabeled table if they don't already exist.
+try:
+    conn.execute("ALTER TABLE complaints_unlabeled ADD COLUMN cluster INTEGER")
+    conn.execute("ALTER TABLE complaints_unlabeled ADD COLUMN cluster_label TEXT")
+except Exception:
+    pass  # columns already exist from a previous run
+
+for _, row in df.iterrows():
+    conn.execute(
+        "UPDATE complaints_unlabeled SET cluster = ?, cluster_label = ? WHERE id = ?",
+        (int(row["cluster"]), row["cluster_label"], int(row["id"])),
+    )
+conn.commit()
+conn.close()
+
+print("Cluster assignments written to complaints_unlabeled.")
+print()
+print(df[["id", "complaint_text", "cluster", "cluster_label"]].head(5).to_string(index=False))
+```
+
+---
+
+## Summary
+
+| Step | What we did | Key tool |
+|---|---|---|
+| Load data | Read unlabeled complaints from SQLite | `sqlite3`, `pandas` |
+| Preprocess | Lowercase, stopwords, lemmatize | `nltk` |
+| Embed | 384-dim semantic vectors per complaint | `sentence-transformers` |
+| Reduce | Compressed to 5D (cluster) + 2D (plot) | `umap-learn` |
+| Cluster | Density-based grouping, no fixed K | `hdbscan` |
+| Inspect | Top TF-IDF terms + sample texts per cluster | `sklearn` |
+| Label | Manually assigned human-readable names | — |
+| Evaluate | Purity, homogeneity, V-measure vs. true labels | `sklearn.metrics` |
+| Persist | Wrote cluster assignments back to SQLite | `sqlite3` |
+
+**Key differences from the supervised notebook:**
+
+| | Supervised (Notebook 1) | Unsupervised (This notebook) |
+|---|---|---|
+| Labels needed to train? | Yes | No |
+| Can discover new categories? | No | Yes |
+| Evaluation is easy? | Yes (accuracy, F1) | Harder — needs ground truth to verify |
+| Best for | Routing known complaint types | Exploring unknown patterns |
+
+**Next steps to explore:**
+
+- Tune `min_cluster_size` in HDBSCAN and see how the number of clusters changes.
+- Try replacing `all-MiniLM-L6-v2` with a larger model like `all-mpnet-base-v2` for richer embeddings.
+- Use the Claude API to auto-generate cluster label names instead of doing it manually in step 8.
+- Run the same clustering on `sentiment_label` to see if sentiment clusters emerge naturally.

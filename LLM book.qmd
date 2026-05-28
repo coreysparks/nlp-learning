@@ -1,0 +1,31 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+```{python}
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct",
+torch_dtype = torch.float32
+)
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+```
+
+
+```{python}
+prompt = " Write an email apologizing to Sarah for the tragic gardening mishap. Explain how it happened.<|assistant|>"
+
+input_ids = tokenizer(prompt, return_tensors="pt").input_ids
+input_ids
+
+generation_output = model.generate(input_ids= input_ids, max_new_tokens=200)
+
+print(tokenizer.decode(generation_output[0]))
+```
+```{python}
+for token_id in input_ids[0]:
+    print(tokenizer.decode(token_id))
+```

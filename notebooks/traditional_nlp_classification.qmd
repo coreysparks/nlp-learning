@@ -13,27 +13,21 @@ execute:
 
 ## Overview
 
-This notebook walks through a traditional NLP pipeline for classifying customer
-complaint text into product categories. We will go from raw text in a SQLite
-database all the way to a trained classifier, explaining each step along the way.
+This notebook walks through a traditional NLP pipeline for classifying customer complaint text into product categories. We will go from raw text in a SQLite database all the way to a trained classifier, explaining each step along the way.
 
 The general workflow is:
 
-1. Load the data from SQLite
-2. Clean and preprocess the text
-3. Convert text to numbers (TF-IDF vectorization)
-4. Train a classifier (Logistic Regression)
-5. Evaluate how well it performs
+1.  Load the data from SQLite
+2.  Clean and preprocess the text
+3.  Convert text to numbers (TF-IDF vectorization)
+4.  Train a classifier (Logistic Regression)
+5.  Evaluate how well it performs
 
----
+------------------------------------------------------------------------
 
 ## 1. Connect to the Database
 
-The complaint data lives in a SQLite file at `data/complaints.db`. SQLite is a
-lightweight database that is stored as a single file — no server required. Python's
-built-in `sqlite3` module can connect to it directly. We use `pandas` to read the
-query result into a DataFrame so the rest of the workflow can treat the data like a
-table.
+The complaint data lives in a SQLite file at `data/complaints.db`. SQLite is a lightweight database that is stored as a single file — no server required. Python's built-in `sqlite3` module can connect to it directly. We use `pandas` to read the query result into a DataFrame so the rest of the workflow can treat the data like a table.
 
 ```{python}
 import sqlite3
@@ -59,15 +53,11 @@ print(f"Loaded {len(df)} rows")
 print(df.dtypes)
 ```
 
----
+------------------------------------------------------------------------
 
 ## 2. Explore the Data
 
-Before doing any NLP it is important to understand what the data looks like. Here
-we check the shape, look at a few sample rows, and count how many complaints exist
-per product category. This tells us whether the classes are balanced (roughly equal
-counts) or imbalanced (some categories dominate), which matters later when we
-evaluate the classifier.
+Before doing any NLP it is important to understand what the data looks like. Here we check the shape, look at a few sample rows, and count how many complaints exist per product category. This tells us whether the classes are balanced (roughly equal counts) or imbalanced (some categories dominate), which matters later when we evaluate the classifier.
 
 ```{python}
 # How many complaints are in each product category?
@@ -82,20 +72,17 @@ for i, row in df[["product_category", "complaint_text"]].head(5).iterrows():
 
 ```
 
----
+------------------------------------------------------------------------
 
 ## 3. Text Preprocessing
 
-Raw text is messy. Before we can convert it to numbers, we need to clean it up.
-The steps below are standard in traditional NLP pipelines:
+Raw text is messy. Before we can convert it to numbers, we need to clean it up. The steps below are standard in traditional NLP pipelines:
 
 - **Lowercase** — so "Bank" and "bank" are treated as the same word.
 - **Remove punctuation and digits** — symbols rarely carry meaning for classification.
 - **Tokenize** — split the sentence into individual words (tokens).
-- **Remove stopwords** — words like "the", "a", "I", "was" appear everywhere and
-  add noise without adding signal about the complaint topic.
-- **Lemmatize** — reduce words to their base form so "charging", "charged", and
-  "charges" all become "charge". This shrinks the vocabulary and groups related words.
+- **Remove stopwords** — words like "the", "a", "I", "was" appear everywhere and add noise without adding signal about the complaint topic.
+- **Lemmatize** — reduce words to their base form so "charging", "charged", and "charges" all become "charge". This shrinks the vocabulary and groups related words.
 
 ```{python}
 import re # for regular expressions to clean text
@@ -148,26 +135,18 @@ for i, row in df[["complaint_text", "clean_text"]].head(5).iterrows():
     print()
 ```
 
----
+------------------------------------------------------------------------
 
 ## 4. TF-IDF Vectorization
 
-Machine learning models cannot work with raw strings — they need numbers. TF-IDF
-(Term Frequency–Inverse Document Frequency) is the classic way to convert text
-into a numeric matrix.
+Machine learning models cannot work with raw strings — they need numbers. TF-IDF (Term Frequency–Inverse Document Frequency) is the classic way to convert text into a numeric matrix.
 
 - **Term Frequency (TF)**: how often a word appears in one document.
-- **Inverse Document Frequency (IDF)**: penalizes words that appear in almost every
-  document (they are not useful for distinguishing categories).
+- **Inverse Document Frequency (IDF)**: penalizes words that appear in almost every document (they are not useful for distinguishing categories).
 
-The result is a matrix where each row is a complaint and each column is a word.
-The value in a cell represents how important that word is to that specific complaint
-relative to all others.
+The result is a matrix where each row is a complaint and each column is a word. The value in a cell represents how important that word is to that specific complaint relative to all others.
 
-`max_features=3000` caps the vocabulary at the 3,000 most useful words to keep
-the matrix manageable. `ngram_range=(1, 2)` means we also capture two-word phrases
-(bigrams) like "late fee" or "interest rate", which often carry more meaning than
-individual words alone.
+`max_features=3000` caps the vocabulary at the 3,000 most useful words to keep the matrix manageable. `ngram_range=(1, 2)` means we also capture two-word phrases (bigrams) like "late fee" or "interest rate", which often carry more meaning than individual words alone.
 
 ```{python}
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -186,19 +165,16 @@ print(f"Feature matrix shape: {X.shape}")
 print(f"  {X.shape[0]} complaints x {X.shape[1]} TF-IDF features")
 ```
 
----
+------------------------------------------------------------------------
 
 ## 5. Train / Test Split
 
-To know whether our classifier actually learned something useful, we need to
-evaluate it on data it has never seen during training. We split the dataset into:
+To know whether our classifier actually learned something useful, we need to evaluate it on data it has never seen during training. We split the dataset into:
 
 - **Training set (80%)** — used to fit the model.
 - **Test set (20%)** — held back and used only to measure performance.
 
-`stratify=y` ensures that both splits have the same proportion of each category.
-Without this, random chance could put all examples of a rare category into the
-training set, leaving none to test on.
+`stratify=y` ensures that both splits have the same proportion of each category. Without this, random chance could put all examples of a rare category into the training set, leaving none to test on.
 
 ```{python}
 from sklearn.model_selection import train_test_split
@@ -211,13 +187,11 @@ print(f"Training samples : {X_train.shape[0]}")
 print(f"Test samples     : {X_test.shape[0]}")
 ```
 
----
+------------------------------------------------------------------------
 
 ## 6. Train a Logistic Regression Classifier
 
-Logistic Regression is a simple but surprisingly effective classifier for text.
-It learns a weight for each TF-IDF feature that indicates how much that word
-pushes a document toward (or away from) each category.
+Logistic Regression is a simple but surprisingly effective classifier for text. It learns a weight for each TF-IDF feature that indicates how much that word pushes a document toward (or away from) each category.
 
 We use it here rather than a more complex model (like a neural network) because:
 
@@ -225,9 +199,7 @@ We use it here rather than a more complex model (like a neural network) because:
 - The learned weights are interpretable — we can see which words drive each category.
 - It tends to work well when TF-IDF features are already informative.
 
-`max_iter=1000` gives the optimizer enough iterations to converge.
-`C=1.0` is the regularization strength — higher values fit the training data more
-tightly, lower values produce a smoother model that generalizes better.
+`max_iter=1000` gives the optimizer enough iterations to converge. `C=1.0` is the regularization strength — higher values fit the training data more tightly, lower values produce a smoother model that generalizes better.
 
 ```{python}
 from sklearn.linear_model import LogisticRegression
@@ -238,21 +210,18 @@ clf.fit(X_train, y_train)
 print("Model trained.")
 ```
 
----
+------------------------------------------------------------------------
 
 ## 7. Evaluate the Classifier
 
-Now we measure how well the model performs on the held-out test set. The
-classification report shows:
+Now we measure how well the model performs on the held-out test set. The classification report shows:
 
 - **Precision** — of all the times the model predicted a category, how often was it right?
 - **Recall** — of all the actual examples of a category, how many did the model find?
-- **F1-score** — the harmonic mean of precision and recall; a single number that
-  balances both. Closer to 1.0 is better.
+- **F1-score** — the harmonic mean of precision and recall; a single number that balances both. Closer to 1.0 is better.
 - **Support** — how many real examples of that category were in the test set.
 
-Low scores on a category usually mean either (a) too few training examples or
-(b) that category's language overlaps heavily with another.
+Low scores on a category usually mean either (a) too few training examples or (b) that category's language overlaps heavily with another.
 
 ```{python}
 from sklearn.metrics import classification_report, accuracy_score
@@ -262,17 +231,14 @@ y_pred = clf.predict(X_test)
 print(f"Overall accuracy: {accuracy_score(y_test, y_pred):.2%}\n")
 print(classification_report(y_test, y_pred))
 ```
- The output of classification_report will show the precision, recall, F1-score, and support for each product category. Look for categories with low F1-scores to identify where the model struggles. Support is important to check because a category with very few examples may have unreliable metrics. If a category has very low support, consider collecting more training data for that category or combining it with a related category.
 
----
+The output of classification_report will show the precision, recall, F1-score, and support for each product category. Look for categories with low F1-scores to identify where the model struggles. Support is important to check because a category with very few examples may have unreliable metrics. If a category has very low support, consider collecting more training data for that category or combining it with a related category.
+
+------------------------------------------------------------------------
 
 ## 8. Confusion Matrix
 
-A confusion matrix shows exactly which categories the model mixes up. Each row
-represents the true category and each column represents what the model predicted.
-The diagonal (top-left to bottom-right) shows correct predictions — you want those
-numbers to be high. Off-diagonal numbers show where the model confused one category
-for another.
+A confusion matrix shows exactly which categories the model mixes up. Each row represents the true category and each column represents what the model predicted. The diagonal (top-left to bottom-right) shows correct predictions — you want those numbers to be high. Off-diagonal numbers show where the model confused one category for another.
 
 ```{python}
 import matplotlib.pyplot as plt
@@ -289,15 +255,11 @@ plt.tight_layout()
 plt.show()
 ```
 
----
+------------------------------------------------------------------------
 
 ## 9. Most Informative Words per Category
 
-One advantage of Logistic Regression is that the model weights are interpretable.
-Each category has a coefficient for every word in the vocabulary. The words with
-the highest positive coefficients are the strongest predictors for that category.
-Looking at these helps us verify that the model learned sensible patterns rather
-than spurious correlations.
+One advantage of Logistic Regression is that the model weights are interpretable. Each category has a coefficient for every word in the vocabulary. The words with the highest positive coefficients are the strongest predictors for that category. Looking at these helps us verify that the model learned sensible patterns rather than spurious correlations.
 
 ```{python}
 import numpy as np
@@ -314,17 +276,13 @@ for i, category in enumerate(clf.classes_):
     print()
 ```
 
----
+------------------------------------------------------------------------
 
 ## 10. Predict on New Text
 
-Finally, let's use the trained model to classify a brand-new complaint that was
-not in the dataset at all. This is the real-world use case — a customer submits a
-complaint and the model routes it to the right team automatically.
+Finally, let's use the trained model to classify a brand-new complaint that was not in the dataset at all. This is the real-world use case — a customer submits a complaint and the model routes it to the right team automatically.
 
-The new text goes through the same preprocessing and vectorization pipeline we
-built above, then the model returns its predicted category along with the
-probability it assigned to each class.
+The new text goes through the same preprocessing and vectorization pipeline we built above, then the model returns its predicted category along with the probability it assigned to each class.
 
 ```{python}
 new_complaints = [
@@ -343,35 +301,23 @@ for text in new_complaints:
     print()
 ```
 
-.max() returns the highest probability among the predicted classes, which gives us a sense of how confident the model is in its prediction. A confidence close to 100% means the model is very sure about its classification, while a lower confidence indicates more uncertainty. This can be useful for flagging cases where the model might want to defer to a human for review.
----
+## .max() returns the highest probability among the predicted classes, which gives us a sense of how confident the model is in its prediction. A confidence close to 100% means the model is very sure about its classification, while a lower confidence indicates more uncertainty. This can be useful for flagging cases where the model might want to defer to a human for review.
 
 ## 11. Per-Class Precision and Threshold Tuning
 
 ### What is a decision threshold?
 
-When `clf.predict()` classifies a complaint it internally calls `predict_proba()`
-first, gets a probability for every category, and then picks whichever category
-has the highest probability. That "pick the highest" rule uses an implicit
-threshold of 0 — it always makes a prediction no matter how uncertain the model is.
+When `clf.predict()` classifies a complaint it internally calls `predict_proba()` first, gets a probability for every category, and then picks whichever category has the highest probability. That "pick the highest" rule uses an implicit threshold of 0 — it always makes a prediction no matter how uncertain the model is.
 
-**Threshold tuning** changes that rule: for each category we set a minimum
-confidence the model must reach before it will commit to that label. If no
-category clears its threshold the complaint is flagged as **"Review needed"**
-and routed to a human. This directly trades recall (we label fewer complaints
-automatically) for precision (the ones we do label are more likely to be correct).
+**Threshold tuning** changes that rule: for each category we set a minimum confidence the model must reach before it will commit to that label. If no category clears its threshold the complaint is flagged as **"Review needed"** and routed to a human. This directly trades recall (we label fewer complaints automatically) for precision (the ones we do label are more likely to be correct).
 
-This is especially useful in practice when the cost of a wrong label (routing a
-mortgage complaint to the credit card team) is higher than the cost of deferring
-to a human reviewer.
+This is especially useful in practice when the cost of a wrong label (routing a mortgage complaint to the credit card team) is higher than the cost of deferring to a human reviewer.
 
----
+------------------------------------------------------------------------
 
 ### Step 1 — Baseline per-class precision
 
-First, look at where precision is weakest before we tune anything. The
-`precision_score` function with `average=None` returns one score per class in
-alphabetical order.
+First, look at where precision is weakest before we tune anything. The `precision_score` function with `average=None` returns one score per class in alphabetical order.
 
 ```{python}
 import numpy as np
@@ -396,23 +342,13 @@ baseline_df = pd.DataFrame({
 print(baseline_df.to_string(index=False))
 ```
 
----
+------------------------------------------------------------------------
 
 ### Step 2 — Precision vs. threshold curve per class
 
-This plot shows how precision changes as you raise the confidence threshold for
-each category. The x-axis is the threshold value (0 to 1) and the y-axis is the
-precision you get at that threshold. The shaded area shows the fraction of
-complaints that would still receive an automatic label at each threshold — as the
-threshold rises, fewer complaints are labeled (coverage shrinks) but the ones
-that are labeled become more accurate.
+This plot shows how precision changes as you raise the confidence threshold for each category. The x-axis is the threshold value (0 to 1) and the y-axis is the precision you get at that threshold. The shaded area shows the fraction of complaints that would still receive an automatic label at each threshold — as the threshold rises, fewer complaints are labeled (coverage shrinks) but the ones that are labeled become more accurate.
 
-Reading the chart: find the threshold on the x-axis where the precision line
-crosses your desired precision level. The shaded region tells you how much
-coverage you give up to get there. A curve that stays high and flat across the
-x-axis means you can push the threshold aggressively without sacrificing much
-precision; a curve that climbs steeply means even a small threshold increase
-buys a large precision gain.
+Reading the chart: find the threshold on the x-axis where the precision line crosses your desired precision level. The shaded region tells you how much coverage you give up to get there. A curve that stays high and flat across the x-axis means you can push the threshold aggressively without sacrificing much precision; a curve that climbs steeply means even a small threshold increase buys a large precision gain.
 
 ```{python}
 import matplotlib.pyplot as plt
@@ -458,34 +394,17 @@ plt.show()
 
 **How to read these charts:**
 
-- **Solid blue line — Precision.** This is the share of auto-labeled complaints
-  that were assigned the correct category. It generally rises as the threshold
-  increases because the model only commits to a label when it is more confident,
-  and higher-confidence predictions tend to be more accurate.
+- **Solid blue line — Precision.** This is the share of auto-labeled complaints that were assigned the correct category. It generally rises as the threshold increases because the model only commits to a label when it is more confident, and higher-confidence predictions tend to be more accurate.
 
-- **Shaded blue region — Coverage.** This represents the fraction of complaints
-  in that category that would still receive an automatic label at a given
-  threshold (equivalent to recall). At a threshold of 0 the model labels
-  everything, so coverage is 100%. As the threshold rises the shaded area shrinks,
-  meaning more complaints get deferred to human review instead of being labeled
-  automatically.
+- **Shaded blue region — Coverage.** This represents the fraction of complaints in that category that would still receive an automatic label at a given threshold (equivalent to recall). At a threshold of 0 the model labels everything, so coverage is 100%. As the threshold rises the shaded area shrinks, meaning more complaints get deferred to human review instead of being labeled automatically.
 
-- **The tradeoff.** Every point along the x-axis represents a choice: move right
-  to get higher precision at the cost of lower coverage, or move left to label
-  more complaints automatically at the cost of accepting more labeling errors.
-  A good operating threshold is where the precision line reaches an acceptable
-  level while the shaded coverage region is still large enough to be useful.
-  A category whose precision line is already high at low thresholds (flat and
-  near 1.0 across the chart) needs little or no tuning. A category with a steep
-  rising curve has more room to improve precision by raising the threshold.
+- **The tradeoff.** Every point along the x-axis represents a choice: move right to get higher precision at the cost of lower coverage, or move left to label more complaints automatically at the cost of accepting more labeling errors. A good operating threshold is where the precision line reaches an acceptable level while the shaded coverage region is still large enough to be useful. A category whose precision line is already high at low thresholds (flat and near 1.0 across the chart) needs little or no tuning. A category with a steep rising curve has more room to improve precision by raising the threshold.
 
----
+------------------------------------------------------------------------
 
 ### Step 3 — Find the threshold that hits a precision target
 
-For each category we programmatically find the lowest threshold value that
-achieves a precision of at least 90%. Any complaint where the model's confidence
-for that category is below that threshold gets deferred instead of labeled.
+For each category we programmatically find the lowest threshold value that achieves a precision of at least 90%. Any complaint where the model's confidence for that category is below that threshold gets deferred instead of labeled.
 
 ```{python}
 PRECISION_TARGET = 0.95
@@ -523,14 +442,11 @@ thresholds_df = pd.DataFrame(thresholds_df).sort_values("threshold")
 print(thresholds_df.to_string(index=False))
 ```
 
----
+------------------------------------------------------------------------
 
 ### Step 4 — Apply per-class thresholds to the test set
 
-Now use those thresholds to re-classify the test complaints. For each complaint
-we look at the model's probability for every category. If the highest probability
-clears that category's threshold we assign the label; otherwise we mark it
-"Review needed."
+Now use those thresholds to re-classify the test complaints. For each complaint we look at the model's probability for every category. If the highest probability clears that category's threshold we assign the label; otherwise we mark it "Review needed."
 
 ```{python}
 # Build a lookup: category -> minimum threshold.
@@ -561,14 +477,11 @@ print(f"Complaints auto-labeled : {n_total - n_deferred} / {n_total}  ({(n_total
 print(f"Deferred to human review: {n_deferred} / {n_total}  ({n_deferred/n_total:.1%})")
 ```
 
----
+------------------------------------------------------------------------
 
 ### Step 5 — Compare precision before and after
 
-Finally, compare the baseline precision against the tuned precision for each
-category. We only evaluate on complaints that received an automatic label
-(excluding "Review needed") so the numbers reflect the quality of the
-labels that actually went out.
+Finally, compare the baseline precision against the tuned precision for each category. We only evaluate on complaints that received an automatic label (excluding "Review needed") so the numbers reflect the quality of the labels that actually went out.
 
 ```{python}
 from sklearn.metrics import classification_report
@@ -597,12 +510,12 @@ print(f"Auto-label precision (weighted avg): "
       f"{(comparison['precision_after'] * comparison['support_after']).sum() / comparison['support_after'].sum():.3f}")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Summary
 
 | Step | What we did | Key tool |
-|---|---|---|
+|------------------------|------------------------|------------------------|
 | Load data | Connected to SQLite, read into DataFrame | `sqlite3`, `pandas` |
 | Preprocess | Lowercase, remove punctuation, remove stopwords, lemmatize | `nltk` |
 | Vectorize | Converted text to TF-IDF numeric matrix | `sklearn.TfidfVectorizer` |

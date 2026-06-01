@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Traditional NLP: Classifying Customer Complaints</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="traditional_nlp_classification_files/libs/clipboard/clipboard.min.js"></script>
+<script src="traditional_nlp_classification_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="traditional_nlp_classification_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="traditional_nlp_classification_files/libs/quarto-html/popper.min.js"></script>
+<script src="traditional_nlp_classification_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="traditional_nlp_classification_files/libs/quarto-html/anchor.min.js"></script>
+<link href="traditional_nlp_classification_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="traditional_nlp_classification_files/libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="traditional_nlp_classification_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="traditional_nlp_classification_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="traditional_nlp_classification_files/libs/bootstrap/bootstrap-67270d1595a62d14f123c043d4fb2f18.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#overview" id="toc-overview" class="nav-link active" data-scroll-target="#overview">Overview</a></li>
+  <li><a href="#connect-to-the-database" id="toc-connect-to-the-database" class="nav-link" data-scroll-target="#connect-to-the-database">1. Connect to the Database</a></li>
+  <li><a href="#explore-the-data" id="toc-explore-the-data" class="nav-link" data-scroll-target="#explore-the-data">2. Explore the Data</a></li>
+  <li><a href="#text-preprocessing" id="toc-text-preprocessing" class="nav-link" data-scroll-target="#text-preprocessing">3. Text Preprocessing</a></li>
+  <li><a href="#tf-idf-vectorization" id="toc-tf-idf-vectorization" class="nav-link" data-scroll-target="#tf-idf-vectorization">4. TF-IDF Vectorization</a></li>
+  <li><a href="#train-test-split" id="toc-train-test-split" class="nav-link" data-scroll-target="#train-test-split">5. Train / Test Split</a></li>
+  <li><a href="#train-a-logistic-regression-classifier" id="toc-train-a-logistic-regression-classifier" class="nav-link" data-scroll-target="#train-a-logistic-regression-classifier">6. Train a Logistic Regression Classifier</a></li>
+  <li><a href="#evaluate-the-classifier" id="toc-evaluate-the-classifier" class="nav-link" data-scroll-target="#evaluate-the-classifier">7. Evaluate the Classifier</a></li>
+  <li><a href="#confusion-matrix" id="toc-confusion-matrix" class="nav-link" data-scroll-target="#confusion-matrix">8. Confusion Matrix</a></li>
+  <li><a href="#most-informative-words-per-category" id="toc-most-informative-words-per-category" class="nav-link" data-scroll-target="#most-informative-words-per-category">9. Most Informative Words per Category</a></li>
+  <li><a href="#predict-on-new-text" id="toc-predict-on-new-text" class="nav-link" data-scroll-target="#predict-on-new-text">10. Predict on New Text</a></li>
+  <li><a href="#max-returns-the-highest-probability-among-the-predicted-classes-which-gives-us-a-sense-of-how-confident-the-model-is-in-its-prediction.-a-confidence-close-to-100-means-the-model-is-very-sure-about-its-classification-while-a-lower-confidence-indicates-more-uncertainty.-this-can-be-useful-for-flagging-cases-where-the-model-might-want-to-defer-to-a-human-for-review." id="toc-max-returns-the-highest-probability-among-the-predicted-classes-which-gives-us-a-sense-of-how-confident-the-model-is-in-its-prediction.-a-confidence-close-to-100-means-the-model-is-very-sure-about-its-classification-while-a-lower-confidence-indicates-more-uncertainty.-this-can-be-useful-for-flagging-cases-where-the-model-might-want-to-defer-to-a-human-for-review." class="nav-link" data-scroll-target="#max-returns-the-highest-probability-among-the-predicted-classes-which-gives-us-a-sense-of-how-confident-the-model-is-in-its-prediction.-a-confidence-close-to-100-means-the-model-is-very-sure-about-its-classification-while-a-lower-confidence-indicates-more-uncertainty.-this-can-be-useful-for-flagging-cases-where-the-model-might-want-to-defer-to-a-human-for-review.">.max() returns the highest probability among the predicted classes, which gives us a sense of how confident the model is in its prediction. A confidence close to 100% means the model is very sure about its classification, while a lower confidence indicates more uncertainty. This can be useful for flagging cases where the model might want to defer to a human for review.</a></li>
+  <li><a href="#per-class-precision-and-threshold-tuning" id="toc-per-class-precision-and-threshold-tuning" class="nav-link" data-scroll-target="#per-class-precision-and-threshold-tuning">11. Per-Class Precision and Threshold Tuning</a>
+  <ul class="collapse">
+  <li><a href="#what-is-a-decision-threshold" id="toc-what-is-a-decision-threshold" class="nav-link" data-scroll-target="#what-is-a-decision-threshold">What is a decision threshold?</a></li>
+  <li><a href="#step-1-baseline-per-class-precision" id="toc-step-1-baseline-per-class-precision" class="nav-link" data-scroll-target="#step-1-baseline-per-class-precision">Step 1 — Baseline per-class precision</a></li>
+  <li><a href="#step-2-precision-vs.-threshold-curve-per-class" id="toc-step-2-precision-vs.-threshold-curve-per-class" class="nav-link" data-scroll-target="#step-2-precision-vs.-threshold-curve-per-class">Step 2 — Precision vs.&nbsp;threshold curve per class</a></li>
+  <li><a href="#step-3-find-the-threshold-that-hits-a-precision-target" id="toc-step-3-find-the-threshold-that-hits-a-precision-target" class="nav-link" data-scroll-target="#step-3-find-the-threshold-that-hits-a-precision-target">Step 3 — Find the threshold that hits a precision target</a></li>
+  <li><a href="#step-4-apply-per-class-thresholds-to-the-test-set" id="toc-step-4-apply-per-class-thresholds-to-the-test-set" class="nav-link" data-scroll-target="#step-4-apply-per-class-thresholds-to-the-test-set">Step 4 — Apply per-class thresholds to the test set</a></li>
+  <li><a href="#step-5-compare-precision-before-and-after" id="toc-step-5-compare-precision-before-and-after" class="nav-link" data-scroll-target="#step-5-compare-precision-before-and-after">Step 5 — Compare precision before and after</a></li>
+  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Traditional NLP: Classifying Customer Complaints</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="overview" class="level2">
+<h2 class="anchored" data-anchor-id="overview">Overview</h2>
+<p>This notebook walks through a traditional NLP pipeline for classifying customer complaint text into product categories. We will go from raw text in a SQLite database all the way to a trained classifier, explaining each step along the way.</p>
+<p>The general workflow is:</p>
+<ol type="1">
+<li>Load the data from SQLite</li>
+<li>Clean and preprocess the text</li>
+<li>Convert text to numbers (TF-IDF vectorization)</li>
+<li>Train a classifier (Logistic Regression)</li>
+<li>Evaluate how well it performs</li>
+</ol>
+<hr>
+</section>
+<section id="connect-to-the-database" class="level2">
+<h2 class="anchored" data-anchor-id="connect-to-the-database">1. Connect to the Database</h2>
+<p>The complaint data lives in a SQLite file at <code>data/complaints.db</code>. SQLite is a lightweight database that is stored as a single file — no server required. Python’s built-in <code>sqlite3</code> module can connect to it directly. We use <code>pandas</code> to read the query result into a DataFrame so the rest of the workflow can treat the data like a table.</p>
+<div id="816863a4" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># __file__ is not available in Jupyter kernels, so we use Path.cwd() at</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"># runtime. When Quarto renders this notebook it sets the working directory</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># to the notebook's own folder, so ../data always resolves correctly.</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># If you run cells interactively and get an error, run:</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   import os; os.chdir(r"c:\Users\corey\nlp-learning\notebooks")</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># once in a cell, then re-run from here.</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>DB_PATH <span class="op">=</span> Path.cwd().parent <span class="op">/</span> <span class="st">"data"</span> <span class="op">/</span> <span class="st">"complaints.db"</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">not</span> DB_PATH.exists():</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fallback: look relative to the project root in case cwd is the root.</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    DB_PATH <span class="op">=</span> Path.cwd() <span class="op">/</span> <span class="st">"data"</span> <span class="op">/</span> <span class="st">"complaints.db"</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(DB_PATH)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_sql_query(<span class="st">"SELECT * FROM complaints"</span>, conn)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>conn.close()</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Loaded </span><span class="sc">{</span><span class="bu">len</span>(df)<span class="sc">}</span><span class="ss"> rows"</span>)</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(df.dtypes)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Loaded 500 rows
+id                  int64
+submitted_at          str
+customer_id         int64
+product_category      str
+channel               str
+sentiment_label       str
+resolved            int64
+complaint_text        str
+dtype: object</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="explore-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="explore-the-data">2. Explore the Data</h2>
+<p>Before doing any NLP it is important to understand what the data looks like. Here we check the shape, look at a few sample rows, and count how many complaints exist per product category. This tells us whether the classes are balanced (roughly equal counts) or imbalanced (some categories dominate), which matters later when we evaluate the classifier.</p>
+<div id="eb809220" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># How many complaints are in each product category?</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(df[<span class="st">"product_category"</span>].value_counts())</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>()</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Print a few complaint texts so we can see what the model will learn from.</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, row <span class="kw">in</span> df[[<span class="st">"product_category"</span>, <span class="st">"complaint_text"</span>]].head(<span class="dv">5</span>).iterrows():</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"[</span><span class="sc">{</span>row[<span class="st">'product_category'</span>]<span class="sc">}</span><span class="ss">]"</span>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  </span><span class="sc">{</span>row[<span class="st">'complaint_text'</span>]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>product_category
+Savings Account       60
+Credit Card           59
+Checking Account      58
+Auto Insurance        54
+Customer Service      47
+Mobile Banking App    47
+Home Insurance        47
+Mortgage              44
+Personal Loan         42
+Investment Account    42
+Name: count, dtype: int64
+
+[Customer Service]
+  I would like to submit a compliment for the agent named Sarah who helped me resolve a billing dispute last week.
+
+[Customer Service]
+  I would like to submit a compliment for the agent named Sarah who helped me resolve a billing dispute last week.
+
+[Savings Account]
+  apy dropped again this month, should i switch products or what
+
+[Checking Account]
+  I have been a customer for 15 years and the new monthly maintenance fee with no warning is insulting.
+
+[Auto Insurance]
+  this claim process is a nightmare i just want my car fixed
+</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="text-preprocessing" class="level2">
+<h2 class="anchored" data-anchor-id="text-preprocessing">3. Text Preprocessing</h2>
+<p>Raw text is messy. Before we can convert it to numbers, we need to clean it up. The steps below are standard in traditional NLP pipelines:</p>
+<ul>
+<li><strong>Lowercase</strong> — so “Bank” and “bank” are treated as the same word.</li>
+<li><strong>Remove punctuation and digits</strong> — symbols rarely carry meaning for classification.</li>
+<li><strong>Tokenize</strong> — split the sentence into individual words (tokens).</li>
+<li><strong>Remove stopwords</strong> — words like “the”, “a”, “I”, “was” appear everywhere and add noise without adding signal about the complaint topic.</li>
+<li><strong>Lemmatize</strong> — reduce words to their base form so “charging”, “charged”, and “charges” all become “charge”. This shrinks the vocabulary and groups related words.</li>
+</ul>
+<div id="2af15b16" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> re <span class="co"># for regular expressions to clean text</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> nltk <span class="co"># natural language toolkit for preprocessing</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Download the required NLTK data files the first time this runs.</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># These are small reference datasets (stopword lists, tokenizers, lemma rules).</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co"># the punkt_tab tokenizer is a faster version of the standard punkt tokenizer.</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># wordnet is needed for lemmatization. lemmatization is the process of reducing words to their base form (e.g. "running" -&gt; "run").</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>nltk.download(<span class="st">"stopwords"</span>, quiet<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>nltk.download(<span class="st">"punkt"</span>, quiet<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>nltk.download(<span class="st">"punkt_tab"</span>, quiet<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>nltk.download(<span class="st">"wordnet"</span>, quiet<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nltk.corpus <span class="im">import</span> stopwords</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nltk.tokenize <span class="im">import</span> word_tokenize</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nltk.stem <span class="im">import</span> WordNetLemmatizer</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>STOPWORDS <span class="op">=</span> <span class="bu">set</span>(stopwords.words(<span class="st">"english"</span>))</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>lemmatizer <span class="op">=</span> WordNetLemmatizer() <span class="co"># create a lemmatizer instance to use in the preprocess function</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Define a function that takes a raw complaint text and returns a cleaned version.</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> preprocess(text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Clean a single complaint string and return a processed version."""</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 1: lowercase everything</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text.lower()</span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 2: strip punctuation and digits, keep only letters and spaces</span></span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> re.sub(<span class="vs">r"</span><span class="pp">[^a-z</span><span class="dv">\s</span><span class="pp">]</span><span class="vs">"</span>, <span class="st">" "</span>, text)</span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: tokenize into individual words</span></span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a>    tokens <span class="op">=</span> word_tokenize(text)</span>
+<span id="cb5-31"><a href="#cb5-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-32"><a href="#cb5-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 4: remove stopwords and very short tokens (length &lt;= 2)</span></span>
+<span id="cb5-33"><a href="#cb5-33" aria-hidden="true" tabindex="-1"></a>    tokens <span class="op">=</span> [t <span class="cf">for</span> t <span class="kw">in</span> tokens <span class="cf">if</span> t <span class="kw">not</span> <span class="kw">in</span> STOPWORDS <span class="kw">and</span> <span class="bu">len</span>(t) <span class="op">&gt;</span> <span class="dv">2</span>]</span>
+<span id="cb5-34"><a href="#cb5-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-35"><a href="#cb5-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 5: lemmatize — reduce each word to its dictionary base form</span></span>
+<span id="cb5-36"><a href="#cb5-36" aria-hidden="true" tabindex="-1"></a>    tokens <span class="op">=</span> [lemmatizer.lemmatize(t) <span class="cf">for</span> t <span class="kw">in</span> tokens]</span>
+<span id="cb5-37"><a href="#cb5-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-38"><a href="#cb5-38" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">" "</span>.join(tokens)</span>
+<span id="cb5-39"><a href="#cb5-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-40"><a href="#cb5-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-41"><a href="#cb5-41" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply the preprocessing function to every row in the DataFrame.</span></span>
+<span id="cb5-42"><a href="#cb5-42" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"clean_text"</span>] <span class="op">=</span> df[<span class="st">"complaint_text"</span>].<span class="bu">apply</span>(preprocess)</span>
+<span id="cb5-43"><a href="#cb5-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-44"><a href="#cb5-44" aria-hidden="true" tabindex="-1"></a><span class="co"># Compare original vs. cleaned for a few rows so we can see what changed.</span></span>
+<span id="cb5-45"><a href="#cb5-45" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, row <span class="kw">in</span> df[[<span class="st">"complaint_text"</span>, <span class="st">"clean_text"</span>]].head(<span class="dv">5</span>).iterrows():</span>
+<span id="cb5-46"><a href="#cb5-46" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"ORIGINAL:"</span>, row[<span class="st">"complaint_text"</span>])</span>
+<span id="cb5-47"><a href="#cb5-47" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"CLEANED: "</span>, row[<span class="st">"clean_text"</span>])</span>
+<span id="cb5-48"><a href="#cb5-48" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>ORIGINAL: I would like to submit a compliment for the agent named Sarah who helped me resolve a billing dispute last week.
+CLEANED:  would like submit compliment agent named sarah helped resolve billing dispute last week
+
+ORIGINAL: I would like to submit a compliment for the agent named Sarah who helped me resolve a billing dispute last week.
+CLEANED:  would like submit compliment agent named sarah helped resolve billing dispute last week
+
+ORIGINAL: apy dropped again this month, should i switch products or what
+CLEANED:  apy dropped month switch product
+
+ORIGINAL: I have been a customer for 15 years and the new monthly maintenance fee with no warning is insulting.
+CLEANED:  customer year new monthly maintenance fee warning insulting
+
+ORIGINAL: this claim process is a nightmare i just want my car fixed
+CLEANED:  claim process nightmare want car fixed
+</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="tf-idf-vectorization" class="level2">
+<h2 class="anchored" data-anchor-id="tf-idf-vectorization">4. TF-IDF Vectorization</h2>
+<p>Machine learning models cannot work with raw strings — they need numbers. TF-IDF (Term Frequency–Inverse Document Frequency) is the classic way to convert text into a numeric matrix.</p>
+<ul>
+<li><strong>Term Frequency (TF)</strong>: how often a word appears in one document.</li>
+<li><strong>Inverse Document Frequency (IDF)</strong>: penalizes words that appear in almost every document (they are not useful for distinguishing categories).</li>
+</ul>
+<p>The result is a matrix where each row is a complaint and each column is a word. The value in a cell represents how important that word is to that specific complaint relative to all others.</p>
+<p><code>max_features=3000</code> caps the vocabulary at the 3,000 most useful words to keep the matrix manageable. <code>ngram_range=(1, 2)</code> means we also capture two-word phrases (bigrams) like “late fee” or “interest rate”, which often carry more meaning than individual words alone.</p>
+<div id="446fcad5" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.feature_extraction.text <span class="im">import</span> TfidfVectorizer</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>vectorizer <span class="op">=</span> TfidfVectorizer(max_features<span class="op">=</span><span class="dv">3000</span>, ngram_range<span class="op">=</span>(<span class="dv">1</span>, <span class="dv">2</span>))</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co"># fit_transform does two things at once:</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">#   fit   — learns the vocabulary from the text</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   transform — converts the text into the TF-IDF matrix</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>X <span class="op">=</span> vectorizer.fit_transform(df[<span class="st">"clean_text"</span>])</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Our target (what we want to predict) is the product category.</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> df[<span class="st">"product_category"</span>]</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Feature matrix shape: </span><span class="sc">{</span>X<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"  </span><span class="sc">{</span>X<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss"> complaints x </span><span class="sc">{</span>X<span class="sc">.</span>shape[<span class="dv">1</span>]<span class="sc">}</span><span class="ss"> TF-IDF features"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Feature matrix shape: (500, 1802)
+  500 complaints x 1802 TF-IDF features</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="train-test-split" class="level2">
+<h2 class="anchored" data-anchor-id="train-test-split">5. Train / Test Split</h2>
+<p>To know whether our classifier actually learned something useful, we need to evaluate it on data it has never seen during training. We split the dataset into:</p>
+<ul>
+<li><strong>Training set (80%)</strong> — used to fit the model.</li>
+<li><strong>Test set (20%)</strong> — held back and used only to measure performance.</li>
+</ul>
+<p><code>stratify=y</code> ensures that both splits have the same proportion of each category. Without this, random chance could put all examples of a rare category into the training set, leaving none to test on.</p>
+<div id="e90eed94" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.model_selection <span class="im">import</span> train_test_split</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>X_train, X_test, y_train, y_test <span class="op">=</span> train_test_split(</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    X, y, test_size<span class="op">=</span><span class="fl">0.2</span>, random_state<span class="op">=</span><span class="dv">42</span>, stratify<span class="op">=</span>y</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Training samples : </span><span class="sc">{</span>X_train<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Test samples     : </span><span class="sc">{</span>X_test<span class="sc">.</span>shape[<span class="dv">0</span>]<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Training samples : 400
+Test samples     : 100</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="train-a-logistic-regression-classifier" class="level2">
+<h2 class="anchored" data-anchor-id="train-a-logistic-regression-classifier">6. Train a Logistic Regression Classifier</h2>
+<p>Logistic Regression is a simple but surprisingly effective classifier for text. It learns a weight for each TF-IDF feature that indicates how much that word pushes a document toward (or away from) each category.</p>
+<p>We use it here rather than a more complex model (like a neural network) because:</p>
+<ul>
+<li>It trains fast even on a small dataset.</li>
+<li>The learned weights are interpretable — we can see which words drive each category.</li>
+<li>It tends to work well when TF-IDF features are already informative.</li>
+</ul>
+<p><code>max_iter=1000</code> gives the optimizer enough iterations to converge. <code>C=1.0</code> is the regularization strength — higher values fit the training data more tightly, lower values produce a smoother model that generalizes better.</p>
+<div id="bca8c16b" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.linear_model <span class="im">import</span> LogisticRegression</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>clf <span class="op">=</span> LogisticRegression(max_iter<span class="op">=</span><span class="dv">1000</span>, C<span class="op">=</span><span class="fl">1.0</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>clf.fit(X_train, y_train)</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Model trained."</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Model trained.</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="evaluate-the-classifier" class="level2">
+<h2 class="anchored" data-anchor-id="evaluate-the-classifier">7. Evaluate the Classifier</h2>
+<p>Now we measure how well the model performs on the held-out test set. The classification report shows:</p>
+<ul>
+<li><strong>Precision</strong> — of all the times the model predicted a category, how often was it right?</li>
+<li><strong>Recall</strong> — of all the actual examples of a category, how many did the model find?</li>
+<li><strong>F1-score</strong> — the harmonic mean of precision and recall; a single number that balances both. Closer to 1.0 is better.</li>
+<li><strong>Support</strong> — how many real examples of that category were in the test set.</li>
+</ul>
+<p>Low scores on a category usually mean either (a) too few training examples or (b) that category’s language overlaps heavily with another.</p>
+<div id="c589fcc9" class="cell" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> classification_report, accuracy_score</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>y_pred <span class="op">=</span> clf.predict(X_test)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Overall accuracy: </span><span class="sc">{</span>accuracy_score(y_test, y_pred)<span class="sc">:.2%}</span><span class="ch">\n</span><span class="ss">"</span>)</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(classification_report(y_test, y_pred))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Overall accuracy: 88.00%
+
+                    precision    recall  f1-score   support
+
+    Auto Insurance       0.79      1.00      0.88        11
+  Checking Account       0.92      0.92      0.92        12
+       Credit Card       0.86      1.00      0.92        12
+  Customer Service       0.78      0.78      0.78         9
+    Home Insurance       1.00      0.89      0.94         9
+Investment Account       1.00      0.75      0.86         8
+Mobile Banking App       0.82      0.90      0.86        10
+          Mortgage       0.75      0.67      0.71         9
+     Personal Loan       1.00      0.75      0.86         8
+   Savings Account       1.00      1.00      1.00        12
+
+          accuracy                           0.88       100
+         macro avg       0.89      0.86      0.87       100
+      weighted avg       0.89      0.88      0.88       100
+</code></pre>
+</div>
+</div>
+<p>The output of classification_report will show the precision, recall, F1-score, and support for each product category. Look for categories with low F1-scores to identify where the model struggles. Support is important to check because a category with very few examples may have unreliable metrics. If a category has very low support, consider collecting more training data for that category or combining it with a related category.</p>
+<hr>
+</section>
+<section id="confusion-matrix" class="level2">
+<h2 class="anchored" data-anchor-id="confusion-matrix">8. Confusion Matrix</h2>
+<p>A confusion matrix shows exactly which categories the model mixes up. Each row represents the true category and each column represents what the model predicted. The diagonal (top-left to bottom-right) shows correct predictions — you want those numbers to be high. Off-diagonal numbers show where the model confused one category for another.</p>
+<div id="a5553584" class="cell" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> ConfusionMatrixDisplay, confusion_matrix</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>categories <span class="op">=</span> <span class="bu">sorted</span>(y.unique())</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>cm <span class="op">=</span> confusion_matrix(y_test, y_pred, labels<span class="op">=</span>categories)</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">8</span>))</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>disp <span class="op">=</span> ConfusionMatrixDisplay(confusion_matrix<span class="op">=</span>cm, display_labels<span class="op">=</span>categories)</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>disp.plot(ax<span class="op">=</span>ax, xticks_rotation<span class="op">=</span><span class="dv">45</span>, colorbar<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">"Confusion Matrix — Predicted vs. Actual Category"</span>)</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="traditional_nlp_classification_files/figure-html/cell-9-output-1.png" width="781" height="758" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section id="most-informative-words-per-category" class="level2">
+<h2 class="anchored" data-anchor-id="most-informative-words-per-category">9. Most Informative Words per Category</h2>
+<p>One advantage of Logistic Regression is that the model weights are interpretable. Each category has a coefficient for every word in the vocabulary. The words with the highest positive coefficients are the strongest predictors for that category. Looking at these helps us verify that the model learned sensible patterns rather than spurious correlations.</p>
+<div id="39fcb824" class="cell" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>feature_names <span class="op">=</span> vectorizer.get_feature_names_out()</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>TOP_N <span class="op">=</span> <span class="dv">10</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, category <span class="kw">in</span> <span class="bu">enumerate</span>(clf.classes_):</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the model's coefficients for this category, sorted descending.</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    top_indices <span class="op">=</span> np.argsort(clf.coef_[i])[::<span class="op">-</span><span class="dv">1</span>][:TOP_N]</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    top_words <span class="op">=</span> [feature_names[j] <span class="cf">for</span> j <span class="kw">in</span> top_indices]</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>category<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  Top words: </span><span class="sc">{</span><span class="st">', '</span><span class="sc">.</span>join(top_words)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Auto Insurance
+  Top words: car, policy, claim, nobody, coverage, zero, accident, rental, thought, renewal zero
+
+Checking Account
+  Top words: deposit, fee, direct deposit, payday, keep, due, debit, debit card, told, isnt
+
+Credit Card
+  Top words: unacceptable want, charged, tier, card, charge, understand, want someone, back today, today, dont
+
+Customer Service
+  Top words: callback, every, every time, different, agent, callback completely, disconnected, sarah, compliment, customer
+
+Home Insurance
+  Top words: claim, settlement, adjuster, kitchen, construction, say, contractor, damage, everything, house
+
+Investment Account
+  Top words: trade, ira, another, brokerage, contribution ira, contribution, instruction, app, trying set, account
+
+Mobile Banking App
+  Top words: app, transfer, transaction, export, csv, export transaction, show, logged, mid transfer, mid
+
+Mortgage
+  Top words: option, refi option, refi, want refi, need someone, application, mortgage, payment instead, biweekly, set biweekly
+
+Personal Loan
+  Top words: rate, approved, amount, loan, fund, business day, business, given, interest rate, approved amount
+
+Savings Account
+  Top words: saving, checking, month, account, caused, dropped, dropped month, product, apy, apy dropped
+</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="predict-on-new-text" class="level2">
+<h2 class="anchored" data-anchor-id="predict-on-new-text">10. Predict on New Text</h2>
+<p>Finally, let’s use the trained model to classify a brand-new complaint that was not in the dataset at all. This is the real-world use case — a customer submits a complaint and the model routes it to the right team automatically.</p>
+<p>The new text goes through the same preprocessing and vectorization pipeline we built above, then the model returns its predicted category along with the probability it assigned to each class.</p>
+<div id="399d0f0f" class="cell" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>new_complaints <span class="op">=</span> [</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"My debit card was declined even though I had money in my account."</span>,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"The interest rate on my loan is much higher than what I was promised."</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"The app keeps crashing whenever I try to view my transaction history."</span>,</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> text <span class="kw">in</span> new_complaints:</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    cleaned <span class="op">=</span> preprocess(text)</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    vec <span class="op">=</span> vectorizer.transform([cleaned])</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    predicted <span class="op">=</span> clf.predict(vec)[<span class="dv">0</span>]</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    confidence <span class="op">=</span> clf.predict_proba(vec).<span class="bu">max</span>()</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Text      : </span><span class="sc">{</span>text<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Predicted : </span><span class="sc">{</span>predicted<span class="sc">}</span><span class="ss">  (confidence: </span><span class="sc">{</span>confidence<span class="sc">:.1%}</span><span class="ss">)"</span>)</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Text      : My debit card was declined even though I had money in my account.
+Predicted : Credit Card  (confidence: 22.9%)
+
+Text      : The interest rate on my loan is much higher than what I was promised.
+Predicted : Personal Loan  (confidence: 34.2%)
+
+Text      : The app keeps crashing whenever I try to view my transaction history.
+Predicted : Mobile Banking App  (confidence: 22.4%)
+</code></pre>
+</div>
+</div>
+</section>
+<section id="max-returns-the-highest-probability-among-the-predicted-classes-which-gives-us-a-sense-of-how-confident-the-model-is-in-its-prediction.-a-confidence-close-to-100-means-the-model-is-very-sure-about-its-classification-while-a-lower-confidence-indicates-more-uncertainty.-this-can-be-useful-for-flagging-cases-where-the-model-might-want-to-defer-to-a-human-for-review." class="level2">
+<h2 class="anchored" data-anchor-id="max-returns-the-highest-probability-among-the-predicted-classes-which-gives-us-a-sense-of-how-confident-the-model-is-in-its-prediction.-a-confidence-close-to-100-means-the-model-is-very-sure-about-its-classification-while-a-lower-confidence-indicates-more-uncertainty.-this-can-be-useful-for-flagging-cases-where-the-model-might-want-to-defer-to-a-human-for-review.">.max() returns the highest probability among the predicted classes, which gives us a sense of how confident the model is in its prediction. A confidence close to 100% means the model is very sure about its classification, while a lower confidence indicates more uncertainty. This can be useful for flagging cases where the model might want to defer to a human for review.</h2>
+</section>
+<section id="per-class-precision-and-threshold-tuning" class="level2">
+<h2 class="anchored" data-anchor-id="per-class-precision-and-threshold-tuning">11. Per-Class Precision and Threshold Tuning</h2>
+<section id="what-is-a-decision-threshold" class="level3">
+<h3 class="anchored" data-anchor-id="what-is-a-decision-threshold">What is a decision threshold?</h3>
+<p>When <code>clf.predict()</code> classifies a complaint it internally calls <code>predict_proba()</code> first, gets a probability for every category, and then picks whichever category has the highest probability. That “pick the highest” rule uses an implicit threshold of 0 — it always makes a prediction no matter how uncertain the model is.</p>
+<p><strong>Threshold tuning</strong> changes that rule: for each category we set a minimum confidence the model must reach before it will commit to that label. If no category clears its threshold the complaint is flagged as <strong>“Review needed”</strong> and routed to a human. This directly trades recall (we label fewer complaints automatically) for precision (the ones we do label are more likely to be correct).</p>
+<p>This is especially useful in practice when the cost of a wrong label (routing a mortgage complaint to the credit card team) is higher than the cost of deferring to a human reviewer.</p>
+<hr>
+</section>
+<section id="step-1-baseline-per-class-precision" class="level3">
+<h3 class="anchored" data-anchor-id="step-1-baseline-per-class-precision">Step 1 — Baseline per-class precision</h3>
+<p>First, look at where precision is weakest before we tune anything. The <code>precision_score</code> function with <code>average=None</code> returns one score per class in alphabetical order.</p>
+<div id="5a7006bf" class="cell" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> precision_score</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Get the model's probability estimates for every test complaint.</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Shape: (n_test_samples, n_classes)  — one probability column per category.</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>y_proba <span class="op">=</span> clf.predict_proba(X_test)</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Class order that sklearn uses internally — must match columns of y_proba.</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>classes <span class="op">=</span> clf.classes_</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>baseline_precision <span class="op">=</span> precision_score(y_test, y_pred, average<span class="op">=</span><span class="va">None</span>, labels<span class="op">=</span>classes)</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>baseline_df <span class="op">=</span> pd.DataFrame({</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"category"</span>: classes,</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"precision"</span>: baseline_precision,</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"support"</span>: [(y_test <span class="op">==</span> c).<span class="bu">sum</span>() <span class="cf">for</span> c <span class="kw">in</span> classes],</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>}).sort_values(<span class="st">"precision"</span>)</span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(baseline_df.to_string(index<span class="op">=</span><span class="va">False</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>          category  precision  support
+          Mortgage   0.750000        9
+  Customer Service   0.777778        9
+    Auto Insurance   0.785714       11
+Mobile Banking App   0.818182       10
+       Credit Card   0.857143       12
+  Checking Account   0.916667       12
+Investment Account   1.000000        8
+    Home Insurance   1.000000        9
+     Personal Loan   1.000000        8
+   Savings Account   1.000000       12</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="step-2-precision-vs.-threshold-curve-per-class" class="level3">
+<h3 class="anchored" data-anchor-id="step-2-precision-vs.-threshold-curve-per-class">Step 2 — Precision vs.&nbsp;threshold curve per class</h3>
+<p>This plot shows how precision changes as you raise the confidence threshold for each category. The x-axis is the threshold value (0 to 1) and the y-axis is the precision you get at that threshold. The shaded area shows the fraction of complaints that would still receive an automatic label at each threshold — as the threshold rises, fewer complaints are labeled (coverage shrinks) but the ones that are labeled become more accurate.</p>
+<p>Reading the chart: find the threshold on the x-axis where the precision line crosses your desired precision level. The shaded region tells you how much coverage you give up to get there. A curve that stays high and flat across the x-axis means you can push the threshold aggressively without sacrificing much precision; a curve that climbs steeply means even a small threshold increase buys a large precision gain.</p>
+<div id="834d2c21" class="cell" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> precision_recall_curve</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>fig, axes <span class="op">=</span> plt.subplots(<span class="dv">2</span>, <span class="dv">5</span>, figsize<span class="op">=</span>(<span class="dv">16</span>, <span class="dv">6</span>))</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>axes <span class="op">=</span> axes.flatten()</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, category <span class="kw">in</span> <span class="bu">enumerate</span>(<span class="bu">sorted</span>(classes)):</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>    y_binary <span class="op">=</span> (y_test <span class="op">==</span> category).astype(<span class="bu">int</span>)</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>    col <span class="op">=</span> <span class="bu">list</span>(classes).index(category)</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>    probs <span class="op">=</span> y_proba[:, col]</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>    precision_vals, recall_vals, thresholds <span class="op">=</span> precision_recall_curve(y_binary, probs)</span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>    <span class="co"># precision_recall_curve adds a final point at (precision=1, recall=0) with</span></span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># no matching threshold, so we drop the last value of each array to align them.</span></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> precision_vals[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>    r <span class="op">=</span> recall_vals[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>    t <span class="op">=</span> thresholds</span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>    ax <span class="op">=</span> axes[i]</span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Precision line — how accurate labels are at each threshold.</span></span>
+<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a>    ax.plot(t, p, color<span class="op">=</span><span class="st">"steelblue"</span>, lw<span class="op">=</span><span class="fl">1.8</span>, label<span class="op">=</span><span class="st">"Precision"</span>)</span>
+<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-26"><a href="#cb22-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Shaded coverage band — fraction of complaints still auto-labeled at each threshold.</span></span>
+<span id="cb22-27"><a href="#cb22-27" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Coverage = recall here because a higher threshold means fewer positive predictions.</span></span>
+<span id="cb22-28"><a href="#cb22-28" aria-hidden="true" tabindex="-1"></a>    ax.fill_between(t, r, alpha<span class="op">=</span><span class="fl">0.15</span>, color<span class="op">=</span><span class="st">"steelblue"</span>, label<span class="op">=</span><span class="st">"Coverage (recall)"</span>)</span>
+<span id="cb22-29"><a href="#cb22-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-30"><a href="#cb22-30" aria-hidden="true" tabindex="-1"></a>    ax.set_title(category, fontsize<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb22-31"><a href="#cb22-31" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">"Threshold"</span>, fontsize<span class="op">=</span><span class="dv">7</span>)</span>
+<span id="cb22-32"><a href="#cb22-32" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">"Precision / Coverage"</span>, fontsize<span class="op">=</span><span class="dv">7</span>)</span>
+<span id="cb22-33"><a href="#cb22-33" aria-hidden="true" tabindex="-1"></a>    ax.set_xlim(<span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb22-34"><a href="#cb22-34" aria-hidden="true" tabindex="-1"></a>    ax.set_ylim(<span class="dv">0</span>, <span class="fl">1.05</span>)</span>
+<span id="cb22-35"><a href="#cb22-35" aria-hidden="true" tabindex="-1"></a>    ax.tick_params(labelsize<span class="op">=</span><span class="dv">6</span>)</span>
+<span id="cb22-36"><a href="#cb22-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-37"><a href="#cb22-37" aria-hidden="true" tabindex="-1"></a>fig.suptitle(<span class="st">"Precision vs. Confidence Threshold by Category</span><span class="ch">\n</span><span class="st">(shaded = fraction of complaints still auto-labeled)"</span>, fontsize<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb22-38"><a href="#cb22-38" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb22-39"><a href="#cb22-39" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="traditional_nlp_classification_files/figure-html/cell-13-output-1.png" width="1527" height="568" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>How to read these charts:</strong></p>
+<ul>
+<li><p><strong>Solid blue line — Precision.</strong> This is the share of auto-labeled complaints that were assigned the correct category. It generally rises as the threshold increases because the model only commits to a label when it is more confident, and higher-confidence predictions tend to be more accurate.</p></li>
+<li><p><strong>Shaded blue region — Coverage.</strong> This represents the fraction of complaints in that category that would still receive an automatic label at a given threshold (equivalent to recall). At a threshold of 0 the model labels everything, so coverage is 100%. As the threshold rises the shaded area shrinks, meaning more complaints get deferred to human review instead of being labeled automatically.</p></li>
+<li><p><strong>The tradeoff.</strong> Every point along the x-axis represents a choice: move right to get higher precision at the cost of lower coverage, or move left to label more complaints automatically at the cost of accepting more labeling errors. A good operating threshold is where the precision line reaches an acceptable level while the shaded coverage region is still large enough to be useful. A category whose precision line is already high at low thresholds (flat and near 1.0 across the chart) needs little or no tuning. A category with a steep rising curve has more room to improve precision by raising the threshold.</p></li>
+</ul>
+<hr>
+</section>
+<section id="step-3-find-the-threshold-that-hits-a-precision-target" class="level3">
+<h3 class="anchored" data-anchor-id="step-3-find-the-threshold-that-hits-a-precision-target">Step 3 — Find the threshold that hits a precision target</h3>
+<p>For each category we programmatically find the lowest threshold value that achieves a precision of at least 90%. Any complaint where the model’s confidence for that category is below that threshold gets deferred instead of labeled.</p>
+<div id="11b1ca33" class="cell" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>PRECISION_TARGET <span class="op">=</span> <span class="fl">0.95</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>thresholds_df <span class="op">=</span> []</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> category <span class="kw">in</span> classes:</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    y_binary <span class="op">=</span> (y_test <span class="op">==</span> category).astype(<span class="bu">int</span>)</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    col <span class="op">=</span> <span class="bu">list</span>(classes).index(category)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    probs <span class="op">=</span> y_proba[:, col]</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    precision_vals, recall_vals, thresholds <span class="op">=</span> precision_recall_curve(y_binary, probs)</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># precision_recall_curve returns one more precision/recall value than thresholds,</span></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># so we align by dropping the last element of precision_vals and recall_vals.</span></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> p, r, t <span class="kw">in</span> <span class="bu">zip</span>(precision_vals[:<span class="op">-</span><span class="dv">1</span>], recall_vals[:<span class="op">-</span><span class="dv">1</span>], thresholds):</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> p <span class="op">&gt;=</span> PRECISION_TARGET:</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>            thresholds_df.append({</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>                <span class="st">"category"</span>: category,</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>                <span class="st">"threshold"</span>: <span class="bu">round</span>(t, <span class="dv">3</span>),</span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>                <span class="st">"precision_at_threshold"</span>: <span class="bu">round</span>(p, <span class="dv">3</span>),</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>                <span class="st">"recall_at_threshold"</span>: <span class="bu">round</span>(r, <span class="dv">3</span>),</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>            })</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>            <span class="cf">break</span>   <span class="co"># first threshold that clears the target is the lowest (most inclusive)</span></span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># No threshold achieves the target — precision never reaches 90% for this class.</span></span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>        thresholds_df.append({</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>            <span class="st">"category"</span>: category,</span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>            <span class="st">"threshold"</span>: <span class="va">None</span>,</span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>            <span class="st">"precision_at_threshold"</span>: <span class="va">None</span>,</span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>            <span class="st">"recall_at_threshold"</span>: <span class="va">None</span>,</span>
+<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>thresholds_df <span class="op">=</span> pd.DataFrame(thresholds_df).sort_values(<span class="st">"threshold"</span>)</span>
+<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(thresholds_df.to_string(index<span class="op">=</span><span class="va">False</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>          category  threshold  precision_at_threshold  recall_at_threshold
+     Personal Loan      0.102                     1.0                0.875
+    Home Insurance      0.116                     1.0                1.000
+          Mortgage      0.154                     1.0                0.667
+Investment Account      0.164                     1.0                0.750
+  Checking Account      0.176                     1.0                1.000
+Mobile Banking App      0.200                     1.0                0.900
+  Customer Service      0.221                     1.0                0.778
+    Auto Insurance      0.238                     1.0                0.818
+       Credit Card      0.246                     1.0                0.833
+   Savings Account      0.357                     1.0                1.000</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="step-4-apply-per-class-thresholds-to-the-test-set" class="level3">
+<h3 class="anchored" data-anchor-id="step-4-apply-per-class-thresholds-to-the-test-set">Step 4 — Apply per-class thresholds to the test set</h3>
+<p>Now use those thresholds to re-classify the test complaints. For each complaint we look at the model’s probability for every category. If the highest probability clears that category’s threshold we assign the label; otherwise we mark it “Review needed.”</p>
+<div id="36b1b457" class="cell" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a lookup: category -&gt; minimum threshold.</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Use 0.0 as fallback for any category where we found no threshold above.</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>threshold_map <span class="op">=</span> {</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    row[<span class="st">"category"</span>]: (row[<span class="st">"threshold"</span>] <span class="cf">if</span> row[<span class="st">"threshold"</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="cf">else</span> <span class="fl">0.0</span>)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _, row <span class="kw">in</span> thresholds_df.iterrows()</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> predict_with_thresholds(proba_row, classes, threshold_map):</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Return the predicted label or 'Review needed' if no class clears its threshold."""</span></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>    best_class <span class="op">=</span> classes[np.argmax(proba_row)]</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>    best_prob  <span class="op">=</span> proba_row.<span class="bu">max</span>()</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>    min_thresh <span class="op">=</span> threshold_map.get(best_class, <span class="fl">0.0</span>)</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> best_prob <span class="op">&gt;=</span> min_thresh:</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> best_class</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">"Review needed"</span></span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>y_pred_tuned <span class="op">=</span> np.array([</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>    predict_with_thresholds(row, classes, threshold_map)</span>
+<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> row <span class="kw">in</span> y_proba</span>
+<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>])</span>
+<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Summarize what changed.</span></span>
+<span id="cb25-23"><a href="#cb25-23" aria-hidden="true" tabindex="-1"></a>n_deferred <span class="op">=</span> (y_pred_tuned <span class="op">==</span> <span class="st">"Review needed"</span>).<span class="bu">sum</span>()</span>
+<span id="cb25-24"><a href="#cb25-24" aria-hidden="true" tabindex="-1"></a>n_total    <span class="op">=</span> <span class="bu">len</span>(y_pred_tuned)</span>
+<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Complaints auto-labeled : </span><span class="sc">{</span>n_total <span class="op">-</span> n_deferred<span class="sc">}</span><span class="ss"> / </span><span class="sc">{</span>n_total<span class="sc">}</span><span class="ss">  (</span><span class="sc">{</span>(n_total<span class="op">-</span>n_deferred)<span class="op">/</span>n_total<span class="sc">:.1%}</span><span class="ss">)"</span>)</span>
+<span id="cb25-26"><a href="#cb25-26" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Deferred to human review: </span><span class="sc">{</span>n_deferred<span class="sc">}</span><span class="ss"> / </span><span class="sc">{</span>n_total<span class="sc">}</span><span class="ss">  (</span><span class="sc">{</span>n_deferred<span class="op">/</span>n_total<span class="sc">:.1%}</span><span class="ss">)"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Complaints auto-labeled : 81 / 100  (81.0%)
+Deferred to human review: 19 / 100  (19.0%)</code></pre>
+</div>
+</div>
+<hr>
+</section>
+<section id="step-5-compare-precision-before-and-after" class="level3">
+<h3 class="anchored" data-anchor-id="step-5-compare-precision-before-and-after">Step 5 — Compare precision before and after</h3>
+<p>Finally, compare the baseline precision against the tuned precision for each category. We only evaluate on complaints that received an automatic label (excluding “Review needed”) so the numbers reflect the quality of the labels that actually went out.</p>
+<div id="5521eecb" class="cell" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> classification_report</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Filter to auto-labeled only for the precision comparison.</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>auto_mask   <span class="op">=</span> y_pred_tuned <span class="op">!=</span> <span class="st">"Review needed"</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>y_test_auto <span class="op">=</span> y_test[auto_mask]</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>y_pred_auto <span class="op">=</span> y_pred_tuned[auto_mask]</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>tuned_precision <span class="op">=</span> precision_score(</span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>    y_test_auto, y_pred_auto, average<span class="op">=</span><span class="va">None</span>, labels<span class="op">=</span>classes, zero_division<span class="op">=</span><span class="dv">0</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>comparison <span class="op">=</span> pd.DataFrame({</span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"category"</span>        : classes,</span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"precision_before"</span>: baseline_precision.<span class="bu">round</span>(<span class="dv">3</span>),</span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"precision_after"</span> : tuned_precision.<span class="bu">round</span>(<span class="dv">3</span>),</span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"delta"</span>           : (tuned_precision <span class="op">-</span> baseline_precision).<span class="bu">round</span>(<span class="dv">3</span>),</span>
+<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"support_original"</span>: [(y_test <span class="op">==</span> c).<span class="bu">sum</span>() <span class="cf">for</span> c <span class="kw">in</span> classes],</span>
+<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"support_after"</span>   : [(y_test_auto <span class="op">==</span> c).<span class="bu">sum</span>() <span class="cf">for</span> c <span class="kw">in</span> classes],</span>
+<span id="cb27-19"><a href="#cb27-19" aria-hidden="true" tabindex="-1"></a>}).sort_values(<span class="st">"delta"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb27-20"><a href="#cb27-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-21"><a href="#cb27-21" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(comparison.to_string(index<span class="op">=</span><span class="va">False</span>))</span>
+<span id="cb27-22"><a href="#cb27-22" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>()</span>
+<span id="cb27-23"><a href="#cb27-23" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Auto-label precision (weighted avg): "</span></span>
+<span id="cb27-24"><a href="#cb27-24" aria-hidden="true" tabindex="-1"></a>      <span class="ss">f"</span><span class="sc">{</span>(comparison[<span class="st">'precision_after'</span>] <span class="op">*</span> comparison[<span class="st">'support_after'</span>])<span class="sc">.</span><span class="bu">sum</span>() <span class="op">/</span> comparison[<span class="st">'support_after'</span>]<span class="sc">.</span><span class="bu">sum</span>()<span class="sc">:.3f}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>          category  precision_before  precision_after  delta  support_original  support_after
+          Mortgage             0.750              1.0  0.250                 9              5
+  Customer Service             0.778              1.0  0.222                 9              6
+    Auto Insurance             0.786              1.0  0.214                11              9
+Mobile Banking App             0.818              1.0  0.182                10              8
+       Credit Card             0.857              1.0  0.143                12             10
+  Checking Account             0.917              1.0  0.083                12             11
+Investment Account             1.000              1.0  0.000                 8              6
+    Home Insurance             1.000              1.0  0.000                 9              8
+     Personal Loan             1.000              1.0  0.000                 8              6
+   Savings Account             1.000              1.0  0.000                12             12
+
+Auto-label precision (weighted avg): 1.000</code></pre>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">Summary</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Step</th>
+<th>What we did</th>
+<th>Key tool</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Load data</td>
+<td>Connected to SQLite, read into DataFrame</td>
+<td><code>sqlite3</code>, <code>pandas</code></td>
+</tr>
+<tr class="even">
+<td>Preprocess</td>
+<td>Lowercase, remove punctuation, remove stopwords, lemmatize</td>
+<td><code>nltk</code></td>
+</tr>
+<tr class="odd">
+<td>Vectorize</td>
+<td>Converted text to TF-IDF numeric matrix</td>
+<td><code>sklearn.TfidfVectorizer</code></td>
+</tr>
+<tr class="even">
+<td>Split</td>
+<td>80/20 train/test split, stratified</td>
+<td><code>sklearn.train_test_split</code></td>
+</tr>
+<tr class="odd">
+<td>Train</td>
+<td>Fit Logistic Regression classifier</td>
+<td><code>sklearn.LogisticRegression</code></td>
+</tr>
+<tr class="even">
+<td>Evaluate</td>
+<td>Accuracy, precision, recall, F1, confusion matrix</td>
+<td><code>sklearn.metrics</code></td>
+</tr>
+<tr class="odd">
+<td>Interpret</td>
+<td>Top words per category from model weights</td>
+<td><code>numpy</code></td>
+</tr>
+<tr class="even">
+<td>Predict</td>
+<td>Classify new unseen complaints</td>
+<td>trained pipeline</td>
+</tr>
+<tr class="odd">
+<td>Threshold tuning</td>
+<td>Per-class precision targets, defer low-confidence predictions</td>
+<td><code>sklearn.metrics</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Next steps to explore:</strong></p>
+<ul>
+<li>Swap in a different classifier (Random Forest, SVM, Naive Bayes) and compare F1 scores.</li>
+<li>Use <code>spacy</code> for preprocessing instead of <code>nltk</code> — especially for named entity recognition.</li>
+<li>Try predicting <code>sentiment_label</code> instead of <code>product_category</code> as a second exercise.</li>
+<li>Replace TF-IDF with word embeddings (Word2Vec or spaCy vectors) for richer features.</li>
+<li>Adjust <code>PRECISION_TARGET</code> from 0.90 to 0.95 and observe how many more complaints get deferred.</li>
+</ul>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

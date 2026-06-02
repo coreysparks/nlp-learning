@@ -1,0 +1,401 @@
+---
+title: "NLP in Python: A Practical Learning Path"
+subtitle: "From Text Columns to AI-Powered Classification and Entity Extraction"
+author: ""
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-float: true
+    number-sections: false
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  message: false
+  engine: jupyter
+---
+
+## Introduction
+
+This document is a structured, practice-first guide to applied natural language
+processing in Python. The goal is not NLP in general; it is to build a working,
+evaluable pipeline that classifies administrative text into categories and
+extracts structured entities from unstructured fields. The path is designed for
+someone already fluent in data wrangling and applied research who wants Python
+fluency grounded in real data rather than toy examples.
+
+Two principles govern everything here: no theory without practical use, and no
+task that does not move you toward a deployable result. Each section maps to one
+day of focused work under 45 minutes.
+
+---
+
+## Orientation: What to Learn, Ignore, and Do First
+
+**Learn first: spaCy.** Not NLTK, not mathematical background on tokenization,
+not the history of language models. spaCy gives you named entity recognition,
+part-of-speech tagging, and dependency parsing in a single object with a clean
+API. For administrative records work, the applied value is immediate.
+
+**Completely ignore:** NLTK (pedagogically oriented and dated), Word2Vec
+internals, and the Transformers library until you have done real work with spaCy.
+Also ignore anything about training your own model for at least the first month.
+
+**The single exercise that puts you ahead of 70% of practitioners:** take a real
+text column from your work, load it into a pandas DataFrame, run spaCy across
+every row using `.apply(nlp)`, extract the entities into new columns, and write
+the result to a CSV. Most people who have studied NLP for months have only run
+tutorials on clean benchmark text. This puts real administrative data through the
+pipeline.
+
+---
+
+## Setup
+
+The code below installs and configures all dependencies used across the seven
+sessions. Run this once in your environment before proceeding.
+
+```python
+#| label: setup
+#| include: false
+
+# Install from terminal before running this document:
+# pip install spacy pandas transformers torch
+# python -m spacy download en_core_web_sm
+
+import pandas as pd
+import spacy
+
+nlp = spacy.load("en_core_web_sm")
+```
+
+---
+
+## Day 1: Read and Manipulate Text in pandas
+
+The objective today is fluency with text handling in pandas. You are grounding
+Python syntax in a workflow you already know from R. Load a CSV with a text
+column, normalize it, and inspect the result.
+
+```python
+#| label: day1-text-prep
+
+df = pd.read_csv("your_file.csv")
+
+# Normalize the text column
+df["text_clean"] = df["text"].str.strip().str.lower()
+
+print(df[["text", "text_clean"]].head(10))
+```
+
+::: {.callout-note}
+The `.str` accessor on a pandas Series applies string methods element-wise,
+analogous to `mutate()` with `str_to_lower()` and `str_trim()` in R's dplyr.
+:::
+
+**Success criterion:** the script runs without error and the output looks clean
+and consistent with no leading or trailing whitespace and uniform casing.
+
+**Do not touch any NLP library today.** The sole objective is comfort with
+`pd.read_csv`, `str.lower()`, and `str.strip()` on a Series.
+
+---
+
+## Day 2: Extract Entities with spaCy
+
+Today you run a real NLP model on your data for the first time. The spaCy `nlp`
+object processes each text string and returns a `Doc` with annotated tokens,
+sentences, and named entities.
+
+```python
+#| label: day2-spacy-entities
+
+# Process a single document to understand the output structure
+sample = nlp("In 2021, the Bureau of Labor Statistics reported 3.5 million unemployed workers in California.")
+
+for ent in sample.ents:
+    print(ent.text, ent.label_)
+
+for token in sample:
+    print(token.text, token.pos_, token.dep_)
+```
+
+```python
+#| label: day2-apply-to-dataframe
+
+# Apply to your real text column
+docs = df["text_clean"].apply(nlp)
+
+# Print entities for the first 20 rows
+for doc in docs[:20]:
+    for ent in doc.ents:
+        print(ent.text, ent.label_)
+```
+
+**Success criterion:** you see labels like ORG, DATE, GPE, and PERSON appearing
+next to real text from your data.
+
+**Do not** try to train or customize the model. Do not read about custom pipeline
+components yet.
+
+---
+
+## Day 3: Store Extracted Entities as Structured Columns
+
+Today you convert the raw spaCy output into a tidy DataFrame structure that can
+be saved and joined to other records.
+
+```python
+#| label: day3-entity-function
+
+def extract_entities(doc):
+    """Return a dict of entity types to concatenated entity text."""
+    result = {}
+    for ent in doc.ents:
+        key = f"ent_{ent.label_}"
+        if key not in result:
+            result[key] = []
+        result[key].append(ent.text)
+    return {k: "; ".join(v) for k, v in result.items()}
+```
+
+```python
+#| label: day3-expand-to-columns
+
+entity_df = docs.apply(extract_entities).apply(pd.Series)
+df_enriched = pd.concat([df, entity_df], axis=1)
+
+df_enriched.to_csv("output_with_entities.csv", index=False)
+print(df_enriched.head())
+```
+
+**Success criterion:** your output CSV has columns like `ent_ORG` and `ent_DATE`
+populated from the source text.
+
+**Do not** try to filter, score, or deduplicate entities yet. The structure is
+the entire deliverable today.
+
+---
+
+## Day 4: Zero-Shot Classification with Hugging Face
+
+Zero-shot classification lets you define your own category labels with no
+training data. You pass the text and a list of candidate labels; the model
+returns a ranked score for each. This is directly applicable to administrative
+records with novel or evolving label schemes.
+
+```python
+#| label: day4-zero-shot-single
+
+from transformers import pipeline
+
+classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+
+result = classifier(
+    "This participant completed a GED program in 2022.",
+    candidate_labels=["education", "employment", "housing"]
+)
+
+print(result)
+```
+
+```python
+#| label: day4-apply-to-sample
+
+candidate_labels = ["education", "employment", "housing"]
+
+sample_50 = df["text_clean"].head(50).tolist()
+
+results = [classifier(text, candidate_labels=candidate_labels) for text in sample_50]
+
+df_classified = df.head(50).copy()
+df_classified["predicted_label"] = [r["labels"][0] for r in results]
+df_classified["confidence"] = [round(r["scores"][0], 3) for r in results]
+
+print(df_classified[["text_clean", "predicted_label", "confidence"]].head(10))
+```
+
+::: {.callout-warning}
+Zero-shot classification can be slow on CPU for large datasets. Keep your sample
+to 50 rows today and do not attempt the full dataset until you have confirmed the
+output is substantively meaningful.
+:::
+
+**Success criterion:** each row gets a predicted label and a confidence score
+that looks meaningful given your knowledge of the records.
+
+**Do not** read about fine-tuning today. Zero-shot is the right tool for your
+use case until you have labeled training data.
+
+---
+
+## Day 5: Combine Classification and Entity Extraction into One Pipeline
+
+Today you write a single script that runs both methods on the same data and
+produces one unified output file.
+
+```python
+#| label: day5-combined-pipeline
+
+def run_full_pipeline(df, text_col, candidate_labels, n=50):
+    subset = df.head(n).copy()
+
+    # Entity extraction
+    docs = subset[text_col].apply(nlp)
+    entity_df = docs.apply(extract_entities).apply(pd.Series)
+
+    # Zero-shot classification
+    texts = subset[text_col].tolist()
+    clf_results = [classifier(t, candidate_labels=candidate_labels) for t in texts]
+    subset["predicted_label"] = [r["labels"][0] for r in clf_results]
+    subset["confidence"] = [round(r["scores"][0], 3) for r in clf_results]
+
+    # Combine
+    output = pd.concat([subset.reset_index(drop=True), entity_df.reset_index(drop=True)], axis=1)
+    return output
+```
+
+```python
+#| label: day5-run-and-save
+
+labels = ["education", "employment", "housing"]
+result_df = run_full_pipeline(df, text_col="text_clean", candidate_labels=labels)
+result_df.to_csv("pipeline_output.csv", index=False)
+print(result_df.head())
+```
+
+**Success criterion:** one CSV with the original text, extracted entities, and
+predicted category labels side by side.
+
+---
+
+## Day 6: Evaluate Your Classifier Honestly
+
+You cannot trust model output you have not measured. Today you manually label 30
+records and compute simple accuracy against model predictions.
+
+```python
+#| label: day6-manual-evaluation
+
+# Load your output and manually assign true labels before running this
+eval_df = pd.read_csv("pipeline_output.csv").head(30).copy()
+
+# Add a column for your manually assigned ground truth label
+# eval_df["true_label"] = [...]  # fill this in manually
+
+eval_df["correct"] = eval_df["predicted_label"] == eval_df["true_label"]
+accuracy = eval_df["correct"].mean()
+
+print(f"Accuracy on 30-row sample: {accuracy:.1%}")
+print(eval_df[["text_clean", "true_label", "predicted_label", "correct"]])
+```
+
+::: {.callout-tip}
+Examine the rows where the model is wrong, not just the accuracy score. Common
+failure modes are short or ambiguous text and domain-specific jargon the model
+has not been trained on.
+:::
+
+**Success criterion:** you have an accuracy number and a substantive
+understanding of where the model fails.
+
+**Do not** try to fix the model today. Understanding failure patterns is the
+entire deliverable.
+
+---
+
+## Day 7: Swap in a Local LLM via Ollama
+
+Given an existing Ollama setup, you can route the same classification task
+through a local LLM and compare it to the Hugging Face results from Day 6. This
+closes the loop on your existing tooling and produces a comparative judgment,
+which is the core research skill in applied AI work.
+
+```python
+#| label: day7-ollama-classify
+
+import requests
+import json
+
+def classify_with_ollama(text, labels, model="llama3.2"):
+    label_str = ", ".join(labels)
+    prompt = f"""Classify the following text into exactly one of these categories: {label_str}.
+
+Text: {text}
+
+Respond only with a JSON object in this format:
+{{"label": "<chosen label>", "reason": "<one sentence explanation>"}}"""
+
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={"model": model, "prompt": prompt, "stream": False}
+    )
+    return json.loads(response.json()["response"])
+```
+
+```python
+#| label: day7-compare-results
+
+labels = ["education", "employment", "housing"]
+eval_df = pd.read_csv("pipeline_output.csv").head(30).copy()
+
+ollama_results = [classify_with_ollama(t, labels) for t in eval_df["text_clean"]]
+eval_df["ollama_label"] = [r["label"] for r in ollama_results]
+eval_df["ollama_reason"] = [r["reason"] for r in ollama_results]
+
+eval_df["hf_correct"] = eval_df["predicted_label"] == eval_df["true_label"]
+eval_df["ollama_correct"] = eval_df["ollama_label"] == eval_df["true_label"]
+
+print("Hugging Face accuracy:", eval_df["hf_correct"].mean().round(3))
+print("Ollama accuracy:      ", eval_df["ollama_correct"].mean().round(3))
+```
+
+**Success criterion:** you have run the same task through two model backends and
+can articulate, with reference to specific failure cases, which performs better
+on your data and why.
+
+---
+
+## Exercises
+
+The following exercises extend each session into deeper practice. All code chunks
+are set to not evaluate by default; complete them in your local environment.
+
+**Exercise 1:** Extend the Day 3 entity extraction function to count the number
+of entities per type rather than concatenating the text. Add a column
+`ent_count_total` that sums all entity counts for a given row.
+
+```python
+#| label: ex1-entity-counts
+#| eval: false
+
+# YOUR CODE HERE
+```
+
+**Exercise 2:** On Day 4, experiment with a different set of candidate labels
+that reflects your actual domain (for example, workforce program types or
+correctional education categories). Assess whether the model's predictions shift
+in ways that are substantively meaningful.
+
+```python
+#| label: ex2-custom-labels
+#| eval: false
+
+# YOUR CODE HERE
+```
+
+**Exercise 3:** After Day 6, identify the three most common error patterns in
+your 30-row evaluation and write a short prose description of why each occurs.
+This is a research skill, not a coding task.
+
+**Exercise 4:** Modify the Day 7 Ollama function to use the OpenAI-compatible
+endpoint at `http://localhost:11434/v1/chat/completions` with the messages API
+format instead of the generate endpoint.
+
+```python
+#| label: ex4-openai-compat
+#| eval: false
+
+# YOUR CODE HERE
+```

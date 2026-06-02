@@ -1,6 +1,6 @@
 import os
 import google.genai as genai
-os.environ["GEMINI_API_KEY"] = "AIzaSyDjwI7mgWT4LxwMGK7-eS79z95XtVtKj-c"
+os.environ["GEMINI_API_KEY"] = "key here"
 client = genai.Client()
 response = client.models.generate_content(
    model="gemini-2.5-flash-lite",

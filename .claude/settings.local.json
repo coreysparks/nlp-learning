@@ -1,10 +1,13 @@
 {
   "permissions": {
+    "allow": [
+      "PowerShell(echo \"OPENAI: $env:OPENAI_API_KEY\"; echo \"ANTHROPIC: $env:ANTHROPIC_API_KEY\")",
+      "Bash(python data/seed.py)",
+      "Bash(ollama list *)",
+      "Bash(python -c \"import ollama\")"
+    ],
     "additionalDirectories": [
       "C:\\Users\\corey"
-    ],
-    "allow": [
-      "PowerShell(echo \"OPENAI: $env:OPENAI_API_KEY\"; echo \"ANTHROPIC: $env:ANTHROPIC_API_KEY\")"
     ]
   }
 }
